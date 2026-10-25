@@ -30,6 +30,7 @@ interface DeliveryOrder {
   id: string;
   raw_id: string;
   customer_name: string;
+  customer_email?: string;
   phone: string;
   masked_phone: string;
   area: string;
@@ -75,7 +76,12 @@ export default function DeliveryOperationsPage() {
   // Filters
   const [statusTab, setStatusTab] = useState<'ALL' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('all');
+
+  // Inline OTP state for Out for Delivery section
+  const [inlineOtps, setInlineOtps] = useState<Record<string, string>>({});
+  const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
+  const [verifyingInline, setVerifyingInline] = useState<Record<string, boolean>>({});
 
   // Modals & Drawers state
   const [selectedOrder, setSelectedOrder] = useState<DeliveryOrder | null>(null);
@@ -158,7 +164,7 @@ export default function DeliveryOperationsPage() {
     return () => clearTimeout(t);
   }, [actionNotice]);
 
-  // 2. Action: Start Delivery
+  // 2. Action: Start Delivery / Out for Delivery
   const handleStartDelivery = async (order: DeliveryOrder) => {
     setStartingDelivery(true);
     setStartError(null);
@@ -177,15 +183,61 @@ export default function DeliveryOperationsPage() {
       }
 
       setStartModalOrder(null);
+      const recipientNotice = data.customer_email || order.customer_email || 'customer email';
       setActionNotice({
         type: 'success',
-        message: `Delivery started for Order #${order.id}! 4-digit OTP dispatched to customer.`,
+        message: `Order #${order.id} is now OUT FOR DELIVERY! 4-digit OTP dispatched to ${recipientNotice}.`,
       });
+      setStatusTab('OUT_FOR_DELIVERY');
       fetchDeliveries(true);
     } catch (err: any) {
       setStartError('Network error starting delivery: ' + err.message);
     } finally {
       setStartingDelivery(false);
+    }
+  };
+
+  // 3. Action: Inline Verify OTP (Out for Delivery section)
+  const handleInlineVerifyOtp = async (order: DeliveryOrder) => {
+    const code = (inlineOtps[order.id] || '').trim();
+    if (!code || code.length !== 4) {
+      setInlineErrors((prev) => ({ ...prev, [order.id]: 'Please enter a 4-digit OTP.' }));
+      return;
+    }
+
+    setVerifyingInline((prev) => ({ ...prev, [order.id]: true }));
+    setInlineErrors((prev) => ({ ...prev, [order.id]: '' }));
+
+    try {
+      const res = await fetch('/api/delivery/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.raw_id,
+          otp: code,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setInlineErrors((prev) => ({
+          ...prev,
+          [order.id]: data.message || 'Verification failed. Please check the OTP.',
+        }));
+        return;
+      }
+
+      setActionNotice({
+        type: 'success',
+        message: `✓ Order #${order.id} delivery verified and confirmed successfully!`,
+      });
+      setInlineOtps((prev) => ({ ...prev, [order.id]: '' }));
+      fetchDeliveries(true);
+    } catch (err: any) {
+      setInlineErrors((prev) => ({ ...prev, [order.id]: 'Network error: ' + err.message }));
+    } finally {
+      setVerifyingInline((prev) => ({ ...prev, [order.id]: false }));
     }
   };
 
@@ -465,24 +517,27 @@ export default function DeliveryOperationsPage() {
 
         {/* 1. SUMMARY STATISTICS CARDS (Section 2 & 35) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          {/* Card: Today's Deliveries */}
+          {/* Card: Total Orders */}
           <div
-            onClick={() => setDateFilter('today')}
+            onClick={() => {
+              setDateFilter('all');
+              setStatusTab('ALL');
+            }}
             className={`p-4 rounded-2xl border transition cursor-pointer ${
-              dateFilter === 'today'
+              dateFilter === 'all' && statusTab === 'ALL'
                 ? 'bg-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/20'
                 : 'bg-white border-slate-200 hover:border-slate-300'
             }`}
           >
             <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider">Today's Total</span>
+              <span className="text-xs font-bold uppercase tracking-wider">All Deliveries</span>
               <Calendar className="w-4 h-4 text-emerald-700" />
             </div>
-            <div className="text-2xl font-black text-slate-900">{stats.total_today}</div>
-            <span className="text-[10px] text-slate-400 font-medium">Sunday Dispatch</span>
+            <div className="text-2xl font-black text-slate-900">{orders.length || stats.total_today}</div>
+            <span className="text-[10px] text-slate-400 font-medium">Harvest Dispatch</span>
           </div>
 
-          {/* Card: Ready for Delivery */}
+          {/* Card: Ready to Start */}
           <div
             onClick={() => setStatusTab('READY')}
             className={`p-4 rounded-2xl border transition cursor-pointer ${
@@ -496,7 +551,7 @@ export default function DeliveryOperationsPage() {
               <Clock className="w-4 h-4 text-blue-600" />
             </div>
             <div className="text-2xl font-black text-blue-900">{stats.ready}</div>
-            <span className="text-[10px] text-blue-600 font-bold">Needs "Start Delivery"</span>
+            <span className="text-[10px] text-blue-600 font-bold">Needs "Out for Delivery"</span>
           </div>
 
           {/* Card: Out for Delivery */}
@@ -581,8 +636,8 @@ export default function DeliveryOperationsPage() {
                 onChange={(e) => setDateFilter(e.target.value as any)}
                 className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
+                <option value="all">All Dates / Active Orders</option>
                 <option value="today">Today's Deliveries</option>
-                <option value="all">All Dates / History</option>
               </select>
             </div>
           </div>
@@ -686,6 +741,11 @@ export default function DeliveryOperationsPage() {
                         {/* Customer & Phone */}
                         <td className="py-4 px-4">
                           <div className="font-bold text-slate-900">{o.customer_name}</div>
+                          {o.customer_email && (
+                            <div className="text-[10px] text-emerald-800 font-medium truncate max-w-[170px]" title={o.customer_email}>
+                              {o.customer_email}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 text-slate-500 font-mono text-[11px] mt-0.5">
                             <span>{isPhoneRevealed ? o.phone : o.masked_phone}</span>
                             <button
@@ -755,18 +815,50 @@ export default function DeliveryOperationsPage() {
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             {isOut && (
-                              <button
-                                onClick={() => {
-                                  setVerifyModalOrder(o);
-                                  setOtpInput('');
-                                  setVerifyError(null);
-                                  setVerifySuccess(null);
-                                }}
-                                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs transition shadow-xs flex items-center gap-1.5"
-                              >
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                Verify OTP
-                              </button>
+                              <div className="flex flex-col items-end gap-1">
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    maxLength={4}
+                                    placeholder="Enter OTP"
+                                    value={inlineOtps[o.id] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                      setInlineOtps((prev) => ({ ...prev, [o.id]: val }));
+                                      if (inlineErrors[o.id]) setInlineErrors((prev) => ({ ...prev, [o.id]: '' }));
+                                    }}
+                                    className="w-24 py-1.5 px-2 text-center font-mono font-black text-xs border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                                  />
+                                  <button
+                                    onClick={() => handleInlineVerifyOtp(o)}
+                                    disabled={verifyingInline[o.id] || (inlineOtps[o.id]?.length !== 4)}
+                                    title="Confirm Delivery OTP"
+                                    className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white font-black text-xs transition shadow-2xs flex items-center gap-1"
+                                  >
+                                    {verifyingInline[o.id] ? (
+                                      <RefreshCw className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3 h-3" />
+                                    )}
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setVerifyModalOrder(o);
+                                      setOtpInput('');
+                                      setVerifyError(null);
+                                      setVerifySuccess(null);
+                                    }}
+                                    title="Open Full OTP Modal"
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                                {inlineErrors[o.id] && (
+                                  <div className="text-[10px] text-red-600 font-bold">{inlineErrors[o.id]}</div>
+                                )}
+                              </div>
                             )}
 
                             {isReady && (
@@ -775,10 +867,10 @@ export default function DeliveryOperationsPage() {
                                   setStartModalOrder(o);
                                   setStartError(null);
                                 }}
-                                className="px-3.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5"
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-black text-xs transition shadow-xs flex items-center gap-1.5 min-h-[34px]"
                               >
                                 <Truck className="w-3.5 h-3.5" />
-                                Start Delivery
+                                Out for Delivery
                               </button>
                             )}
 
@@ -832,6 +924,11 @@ export default function DeliveryOperationsPage() {
                           {o.area}
                         </span>
                       </div>
+                      {o.customer_email && (
+                        <div className="text-[11px] text-emerald-800 font-semibold truncate">
+                          ✉ {o.customer_email}
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-1.5 text-slate-600 font-mono pt-0.5">
                         <Phone className="w-3 h-3 text-slate-400 shrink-0" />
@@ -857,6 +954,65 @@ export default function DeliveryOperationsPage() {
                         <span className="leading-snug">{o.delivery_address}</span>
                       </div>
                     </div>
+
+                    {/* Inline OTP Verification for Mobile Out for Delivery */}
+                    {isOut && (
+                      <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-black text-amber-950 flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-amber-600" />
+                            Ask Customer for OTP
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleResendOtp(o)}
+                            disabled={resending || resendCooldown > 0}
+                            className="text-[11px] font-bold text-emerald-800 hover:underline"
+                          >
+                            {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend OTP to Email'}
+                          </button>
+                        </div>
+
+                        {o.customer_email && (
+                          <p className="text-[11px] text-amber-800 font-medium">
+                            Dispatched to: <strong className="font-bold">{o.customer_email}</strong>
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={4}
+                            placeholder="• • • •"
+                            value={inlineOtps[o.id] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                              setInlineOtps((prev) => ({ ...prev, [o.id]: val }));
+                              if (inlineErrors[o.id]) setInlineErrors((prev) => ({ ...prev, [o.id]: '' }));
+                            }}
+                            className="flex-1 py-2.5 px-3 text-center font-mono font-black text-xl tracking-[0.3em] bg-white border border-slate-300 rounded-xl focus:border-amber-500 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => handleInlineVerifyOtp(o)}
+                            disabled={verifyingInline[o.id] || (inlineOtps[o.id]?.length !== 4)}
+                            className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 text-white font-black text-xs rounded-xl shadow-sm flex items-center gap-1.5 min-h-[42px]"
+                          >
+                            {verifyingInline[o.id] ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
+                            Confirm OTP
+                          </button>
+                        </div>
+
+                        {inlineErrors[o.id] && (
+                          <div className="text-[11px] text-red-600 font-bold">{inlineErrors[o.id]}</div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Contextual Operation Timings */}
                     {isOut && o.otp_expires_at && (
@@ -884,23 +1040,8 @@ export default function DeliveryOperationsPage() {
                       </div>
                     )}
 
-                    {/* Operational Action Buttons (Big touch targets for mobile) */}
+                    {/* Operational Action Buttons */}
                     <div className="pt-1 flex items-center gap-2">
-                      {isOut && (
-                        <button
-                          onClick={() => {
-                            setVerifyModalOrder(o);
-                            setOtpInput('');
-                            setVerifyError(null);
-                            setVerifySuccess(null);
-                          }}
-                          className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 min-h-[44px]"
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          Verify Delivery OTP
-                        </button>
-                      )}
-
                       {isReady && (
                         <button
                           onClick={() => {
@@ -910,7 +1051,7 @@ export default function DeliveryOperationsPage() {
                           className="flex-1 py-3 bg-emerald-800 hover:bg-emerald-900 text-white font-black text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 min-h-[44px]"
                         >
                           <Truck className="w-4 h-4" />
-                          Start Delivery
+                          Out for Delivery
                         </button>
                       )}
 
@@ -1106,7 +1247,7 @@ export default function DeliveryOperationsPage() {
                   <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
                     <Truck className="w-5 h-5" />
                   </div>
-                  <h2 className="text-lg font-black text-slate-900">Start Order Delivery</h2>
+                  <h2 className="text-lg font-black text-slate-900">Send Out for Delivery</h2>
                 </div>
                 <button
                   onClick={() => setStartModalOrder(null)}
@@ -1118,7 +1259,7 @@ export default function DeliveryOperationsPage() {
 
               <div className="space-y-3 text-xs text-slate-600">
                 <p>
-                  You are about to start delivery for <strong>Order #{startModalOrder.id}</strong>.
+                  You are about to send <strong>Order #{startModalOrder.id}</strong> out for delivery.
                 </p>
 
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
@@ -1126,6 +1267,12 @@ export default function DeliveryOperationsPage() {
                     <span>Customer:</span>
                     <span>{startModalOrder.customer_name}</span>
                   </div>
+                  {startModalOrder.customer_email && (
+                    <div className="flex justify-between font-bold text-emerald-800">
+                      <span>Customer Email:</span>
+                      <span className="font-mono">{startModalOrder.customer_email}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-mono">
                     <span>Dispatch Phone:</span>
                     <span>{startModalOrder.phone || startModalOrder.masked_phone}</span>
@@ -1134,7 +1281,7 @@ export default function DeliveryOperationsPage() {
                     <span>Destination:</span>
                     <span className="truncate max-w-[200px] text-right">{startModalOrder.delivery_address}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-emerald-800">
+                  <div className="flex justify-between font-bold text-slate-800">
                     <span>Basket:</span>
                     <span className="truncate max-w-[200px] text-right">{startModalOrder.basket_summary}</span>
                   </div>
@@ -1143,12 +1290,12 @@ export default function DeliveryOperationsPage() {
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 font-medium space-y-1">
                   <p className="font-bold flex items-center gap-1.5 text-emerald-900">
                     <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                    Automated Actions on Start:
+                    Automated Actions on Dispatch:
                   </p>
                   <ul className="list-disc list-inside space-y-0.5 text-[11px] text-emerald-800">
                     <li>Generates secure 4-digit customer delivery OTP (1-hour validity)</li>
-                    <li>Dispatches SMS notification to customer's registered mobile via MSG91</li>
-                    <li>Marks status as <strong>OUT FOR DELIVERY</strong> in live tracker</li>
+                    <li>Dispatches OTP notification directly to customer's email via Resend</li>
+                    <li>Adds the order to the <strong>OUT FOR DELIVERY</strong> section for OTP confirmation</li>
                   </ul>
                 </div>
               </div>
@@ -1182,7 +1329,7 @@ export default function DeliveryOperationsPage() {
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Confirm &amp; Send OTP</span>
+                      <span>Dispatch &amp; Send OTP to Email</span>
                     </>
                   )}
                 </button>

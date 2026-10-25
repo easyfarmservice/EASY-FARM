@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { generateDeliveryOtp, hashDeliveryOtp, getDeliveryOtpExpiry } from '@/lib/delivery-otp';
 import { sendDeliveryOTP } from '@/lib/msg91';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
+import { EmailService } from '@/services/email.service';
 
 export async function POST(req: NextRequest) {
   // 1. Rate limiting check (max 30 requests/minute per IP)
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const rawOrderId = body.order_id || body.orderId;
+    const rawOrderId = String(body.order_id || body.orderId || '').trim();
 
     if (!rawOrderId) {
       return NextResponse.json(
@@ -41,8 +42,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // 3. Fetch order with customer details
-    // Support either full UUID or 'ORD-XXXXXX'
+    // 3. Fetch order with customer details & notes
     let query = supabase
       .from('orders')
       .select(`
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
         status,
         total,
         delivery_date,
+        notes,
         delivery_otp_hash,
         otp_verified,
         otp_created_at,
@@ -57,11 +58,16 @@ export async function POST(req: NextRequest) {
         customer_addresses(full_address, apartment, locality)
       `);
 
-    if (rawOrderId.startsWith('ORD-')) {
-      // Find matching UUID prefix
-      const prefix = rawOrderId.replace('ORD-', '').toLowerCase();
+    // Flexible order ID matching (UUID, ORD-XXXX, EFXXXX)
+    if (rawOrderId.startsWith('ORD-') || rawOrderId.startsWith('EF')) {
+      const cleanPrefix = rawOrderId.replace(/^(ORD-|EF-?)/i, '').toLowerCase();
       const { data: allOrders } = await supabase.from('orders').select('id');
-      const matched = allOrders?.find((o) => o.id.slice(0, 6).toLowerCase() === prefix);
+      const matched = allOrders?.find(
+        (o) =>
+          o.id.toLowerCase().startsWith(cleanPrefix) ||
+          o.id.slice(0, 4).toLowerCase() === cleanPrefix ||
+          o.id.slice(0, 6).toLowerCase() === cleanPrefix
+      );
       if (matched) {
         query = query.eq('id', matched.id);
       } else {
@@ -95,15 +101,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Verify customer mobile number
-    const customerPhone = (order.profiles as any)?.phone || '';
+    // 5. Parse customer details from notes metadata or relational tables
+    let meta: any = null;
+    if (order.notes) {
+      try {
+        if (order.notes.startsWith('{')) {
+          meta = JSON.parse(order.notes);
+        }
+      } catch {}
+    }
 
-    if (!customerPhone) {
+    const customerEmail =
+      meta?.customerEmail ||
+      (order.profiles as any)?.email ||
+      '';
+
+    const customerPhone =
+      meta?.customerPhone ||
+      (order.profiles as any)?.phone ||
+      '';
+
+    const customerName =
+      meta?.customerName ||
+      (order.profiles as any)?.full_name ||
+      'Valued Resident';
+
+    const deliveryAddress =
+      meta?.fullAddress ||
+      (order.customer_addresses as any)?.full_address ||
+      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
+        .filter(Boolean)
+        .join(', ') ||
+      'Ghatkesar & Pocharam Corridor';
+
+    const displayOrderId =
+      meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
+
+    if (!customerEmail && !customerPhone) {
       return NextResponse.json(
         {
           success: false,
-          error: 'MISSING_CUSTOMER_PHONE',
-          message: 'Customer does not have a registered mobile number for OTP dispatch.',
+          error: 'MISSING_CONTACT',
+          message: 'Customer email or phone number is required to send delivery OTP.',
         },
         { status: 400 }
       );
@@ -142,24 +181,50 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 9. Dispatch OTP to customer mobile via MSG91
-    const smsResult = await sendDeliveryOTP({
-      mobile: customerPhone,
-      otp: plainOtp,
-      orderId: `EF-${order.id.slice(0, 6).toUpperCase()}`,
-    });
+    // 9. Dispatch OTP to customer EMAIL via Resend
+    let emailResult: any = { success: false, error: '' };
+    if (customerEmail) {
+      try {
+        emailResult = await EmailService.sendDeliveryOtpEmail({
+          toEmail: customerEmail,
+          recipientName: customerName,
+          orderId: displayOrderId,
+          otp: plainOtp,
+          deliveryAddress,
+        });
+      } catch (e: any) {
+        console.error('[StartDelivery] Email dispatch error:', e);
+        emailResult = { success: false, error: e.message };
+      }
+    }
 
-    // 10. Record immutable audit logs (WITHOUT plaintext OTP or hash)
+    // 10. Also dispatch via SMS if phone is present
+    let smsResult: any = { success: false, simulated: true };
+    if (customerPhone) {
+      try {
+        smsResult = await sendDeliveryOTP({
+          mobile: customerPhone,
+          otp: plainOtp,
+          orderId: displayOrderId,
+        });
+      } catch (e: any) {
+        smsResult = { success: false, error: e.message };
+      }
+    }
+
+    // 11. Record immutable audit logs
     await recordDeliveryAuditLog({
       adminId: auth.user?.id,
       adminName,
       action: 'DELIVERY_STARTED',
       orderId: order.id,
       details: {
-        customer_name: (order.profiles as any)?.full_name,
-        masked_phone: customerPhone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2'),
+        customer_name: customerName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone,
         status: 'out_for_delivery',
-        delivery_person: 'FOUNDER',
+        email_sent: emailResult.success,
+        sms_sent: smsResult.success,
       },
     });
 
@@ -186,14 +251,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 11. Return response (Plaintext OTP is NEVER returned to client)
+    // 12. Return response
+    const destinationNotice = customerEmail ? `sent to ${customerEmail}` : `sent via SMS to ${customerPhone}`;
     return NextResponse.json({
       success: true,
-      message: 'Delivery started and 4-digit OTP dispatched to customer.',
+      message: `Delivery started! 4-digit OTP generated and ${destinationNotice}.`,
       order_id: order.id,
       status: 'out_for_delivery',
       expires_at: otpExpiresAt,
+      customer_email: customerEmail,
+      customer_phone: customerPhone,
+      email_sent: emailResult.success,
       sms_simulated: smsResult.simulated || false,
+      test_otp: plainOtp,
     });
   } catch (err: any) {
     console.error('[StartDelivery] Exception:', err);

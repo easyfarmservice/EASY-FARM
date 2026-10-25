@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Query orders with profiles, address, order_items
+    // Query orders with profiles, address, order_items, notes
     const { data: rows, error } = await supabase
       .from('orders')
       .select(`
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
         status,
         total,
         delivery_date,
+        notes,
         delivery_person_type,
         delivery_person_name,
         delivery_assigned_at,
@@ -71,34 +72,43 @@ export async function GET(req: NextRequest) {
 
       const st = (o.status || '').toLowerCase();
       if (st === 'out_for_delivery') countOutForDelivery++;
-      else if (st === 'ready_for_delivery' || st === 'confirmed' || st === 'packed') countReady++;
+      else if (st === 'ready_for_delivery' || st === 'confirmed' || st === 'packed' || st === 'harvest_scheduled') countReady++;
       else if (st === 'delivered') countDelivered++;
       else if (st === 'failed' || st === 'delivery_failed' || st === 'customer_unavailable' || st === 'cancelled') countFailed++;
 
-      const customerName = o.profiles?.full_name || 'Resident';
-      const rawPhone = o.profiles?.phone || '';
+      let meta: any = null;
+      if (o.notes) {
+        try {
+          if (o.notes.startsWith('{')) meta = JSON.parse(o.notes);
+        } catch {}
+      }
+
+      const customerName = meta?.customerName || o.profiles?.full_name || 'Resident';
+      const customerEmail = meta?.customerEmail || o.profiles?.email || '';
+      const rawPhone = meta?.customerPhone || o.profiles?.phone || '';
       const maskedPhone = rawPhone.length >= 10
         ? rawPhone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2')
         : (rawPhone || 'Not Provided');
 
-      const area = o.customer_addresses?.locality || 'Ghatkesar';
-      const address = [o.customer_addresses?.apartment, o.customer_addresses?.locality]
+      const area = meta?.deliveryZone || o.customer_addresses?.locality || 'Ghatkesar';
+      const address = meta?.fullAddress || [o.customer_addresses?.apartment, o.customer_addresses?.locality]
         .filter(Boolean)
         .join(', ') || 'Singapore Township, Ghatkesar';
 
       const basketSummary = (o.order_items || [])
         .map((i: any) => `${i.basket_name} (${i.quantity})`)
-        .join(', ') || 'Weekly Harvest Basket';
+        .join(', ') || (meta?.items ? meta.items.map((i: any) => `${i.name || i.basketName} (${i.quantity})`).join(', ') : 'Weekly Harvest Basket');
 
       return {
-        id: `EF${o.id.slice(0, 4).toUpperCase()}`,
+        id: meta?.orderNumber ? meta.orderNumber.replace('ORD-', 'EF') : `EF${o.id.slice(0, 4).toUpperCase()}`,
         raw_id: o.id,
         customer_name: customerName,
+        customer_email: customerEmail,
         phone: rawPhone,
         masked_phone: maskedPhone,
         area,
         delivery_address: address,
-        full_address: o.customer_addresses?.full_address || address,
+        full_address: meta?.fullAddress || o.customer_addresses?.full_address || address,
         amount: Number(o.total || 0),
         status: o.status || 'confirmed',
         delivery_date: o.delivery_date,
@@ -122,7 +132,7 @@ export async function GET(req: NextRequest) {
 
     if (dateParam === 'today') {
       filtered = filtered.filter((o) => o.is_today);
-    } else if (dateParam && dateParam !== 'ALL') {
+    } else if (dateParam && dateParam !== 'ALL' && dateParam !== 'all') {
       filtered = filtered.filter((o) => o.delivery_date === dateParam);
     }
 

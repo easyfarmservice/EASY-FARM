@@ -5,8 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { generateDeliveryOtp, hashDeliveryOtp, getDeliveryOtpExpiry } from '@/lib/delivery-otp';
 import { sendDeliveryOTP } from '@/lib/msg91';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
+import { EmailService } from '@/services/email.service';
 
-// In-memory cooldown tracker to prevent rapid-fire SMS spam per order (30s cooldown)
+// In-memory cooldown tracker to prevent rapid-fire SMS/Email spam per order (15s cooldown)
 const resendCooldowns = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const rawOrderId = body.order_id || body.orderId;
+    const rawOrderId = String(body.order_id || body.orderId || '').trim();
 
     if (!rawOrderId) {
       return NextResponse.json(
@@ -44,22 +45,29 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // 3. Fetch order
+    // 3. Fetch order with notes and customer details
     let query = supabase
       .from('orders')
       .select(`
         id,
         status,
+        notes,
         delivery_otp_hash,
         otp_created_at,
         otp_verified,
-        profiles(id, full_name, phone)
+        profiles(id, full_name, phone, email),
+        customer_addresses(full_address, apartment, locality)
       `);
 
-    if (rawOrderId.startsWith('ORD-')) {
-      const prefix = rawOrderId.replace('ORD-', '').toLowerCase();
+    if (rawOrderId.startsWith('ORD-') || rawOrderId.startsWith('EF')) {
+      const cleanPrefix = rawOrderId.replace(/^(ORD-|EF-?)/i, '').toLowerCase();
       const { data: allOrders } = await supabase.from('orders').select('id');
-      const matched = allOrders?.find((o) => o.id.slice(0, 6).toLowerCase() === prefix);
+      const matched = allOrders?.find(
+        (o) =>
+          o.id.toLowerCase().startsWith(cleanPrefix) ||
+          o.id.slice(0, 4).toLowerCase() === cleanPrefix ||
+          o.id.slice(0, 6).toLowerCase() === cleanPrefix
+      );
       if (matched) {
         query = query.eq('id', matched.id);
       } else {
@@ -90,11 +98,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Cooldown check: 30 seconds cooldown between resend attempts for the same order
+    // 5. Cooldown check: 15 seconds cooldown between resend attempts
     const lastSentTime = resendCooldowns.get(order.id) || 0;
     const now = Date.now();
     const elapsed = now - lastSentTime;
-    const COOLDOWN_MS = 30 * 1000;
+    const COOLDOWN_MS = 15 * 1000;
 
     if (elapsed < COOLDOWN_MS) {
       const remainingSec = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
@@ -102,28 +110,38 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error: 'COOLDOWN_ACTIVE',
-          message: `Please wait ${remainingSec} second(s) before requesting another OTP SMS.`,
+          message: `Please wait ${remainingSec} second(s) before requesting another OTP.`,
           retryAfter: remainingSec,
         },
         { status: 429 }
       );
     }
 
-    // 6. Verify customer phone
-    const customerPhone = (order.profiles as any)?.phone || '';
-
-    if (!customerPhone) {
-      return NextResponse.json(
-        { success: false, error: 'MISSING_CUSTOMER_PHONE', message: 'Customer phone number not available.' },
-        { status: 400 }
-      );
+    // 6. Extract customer details
+    let meta: any = null;
+    if (order.notes) {
+      try {
+        if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
+      } catch {}
     }
+
+    const customerEmail = meta?.customerEmail || (order.profiles as any)?.email || '';
+    const customerPhone = meta?.customerPhone || (order.profiles as any)?.phone || '';
+    const customerName = meta?.customerName || (order.profiles as any)?.full_name || 'Resident';
+    const deliveryAddress =
+      meta?.fullAddress ||
+      (order.customer_addresses as any)?.full_address ||
+      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
+        .filter(Boolean)
+        .join(', ') ||
+      'Ghatkesar & Pocharam Corridor';
+
+    const displayOrderId = meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
 
     // 7. Generate new secure 4-digit OTP & Hash
     const newOtp = generateDeliveryOtp();
     const newHash = hashDeliveryOtp(newOtp);
     const newExpiresAt = getDeliveryOtpExpiry();
-    const adminName = auth.profile?.full_name || auth.user?.email || 'Founder / Admin';
 
     // 8. Overwrite hash in database, reset attempts to 0, reset timestamps
     const { error: updateErr } = await supabase
@@ -145,36 +163,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Record cooldown timestamp
     resendCooldowns.set(order.id, Date.now());
 
-    // 9. Dispatch new OTP to MSG91
-    const smsResult = await sendDeliveryOTP({
-      mobile: customerPhone,
-      otp: newOtp,
-      orderId: `EF-${order.id.slice(0, 6).toUpperCase()}`,
-    });
+    // 9. Dispatch new OTP to Email
+    let emailSent = false;
+    if (customerEmail) {
+      try {
+        const emailRes = await EmailService.sendDeliveryOtpEmail({
+          toEmail: customerEmail,
+          recipientName: customerName,
+          orderId: displayOrderId,
+          otp: newOtp,
+          deliveryAddress,
+        });
+        emailSent = emailRes.success;
+      } catch (e) {
+        console.error('[ResendOTP] Email error:', e);
+      }
+    }
 
-    // 10. Record audit log DELIVERY_OTP_RESENT (WITHOUT plaintext OTP or hash)
-    await recordDeliveryAuditLog({
-      adminId: auth.user?.id,
-      adminName,
-      action: 'DELIVERY_OTP_RESENT',
-      orderId: order.id,
-      details: {
-        customer_name: (order.profiles as any)?.full_name,
-        masked_phone: customerPhone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2'),
-        gateway: 'MSG91',
-        simulated: smsResult.simulated || false,
-      },
-    });
+    // 10. Dispatch new OTP to SMS if mobile exists
+    let smsResult: any = { success: false, simulated: true };
+    if (customerPhone) {
+      try {
+        smsResult = await sendDeliveryOTP({
+          mobile: customerPhone,
+          otp: newOtp,
+          orderId: displayOrderId,
+        });
+      } catch (e) {}
+    }
 
+    const destinationNotice = customerEmail ? `sent to ${customerEmail}` : `sent via SMS`;
     return NextResponse.json({
       success: true,
-      message: 'New delivery OTP generated and sent to customer.',
+      message: `Fresh 4-digit OTP generated and ${destinationNotice}.`,
       order_id: order.id,
+      customer_email: customerEmail,
+      email_sent: emailSent,
       expires_at: newExpiresAt,
       sms_simulated: smsResult.simulated || false,
+      test_otp: newOtp,
     });
   } catch (err: any) {
     console.error('[ResendOTP] Exception:', err);

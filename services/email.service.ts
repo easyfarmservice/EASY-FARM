@@ -46,6 +46,14 @@ export interface SendStayActivatedParams {
   daysRemaining?: number;
 }
 
+export interface SendDeliveryOtpParams {
+  toEmail: string;
+  recipientName: string;
+  orderId: string;
+  otp: string;
+  deliveryAddress?: string;
+}
+
 export class EmailService {
   /**
    * Safe email dispatch helper with fallback to onboarding@resend.dev
@@ -244,6 +252,75 @@ export class EmailService {
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `${params.otp} — Your Easy Farm Verification Code`,
+        html: htmlContent,
+      });
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Send Out for Delivery OTP Email to Customer via Resend API
+   */
+  static async sendDeliveryOtpEmail(params: SendDeliveryOtpParams) {
+    if (!isResendConfigured()) {
+      return { success: false, reason: 'API key not configured' };
+    }
+
+    try {
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #065f46;">
+            <h1 style="color: #065f46; margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px;">EASY FARM</h1>
+            <p style="color: #047857; font-size: 11px; margin-top: 4px; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Fresh Harvest Delivery Dispatch</p>
+          </div>
+
+          <!-- Body -->
+          <div style="padding: 24px 0; text-align: center;">
+            <div style="display: inline-block; background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 20px; padding: 4px 14px; margin-bottom: 12px;">
+              <span style="color: #92400e; font-size: 12px; font-weight: 800; text-transform: uppercase;">🚚 OUT FOR DELIVERY</span>
+            </div>
+
+            <h2 style="color: #0f172a; font-size: 20px; font-weight: 800; margin: 0 0 10px 0;">Order #${params.orderId} is on the way!</h2>
+            <p style="color: #475569; font-size: 14px; line-height: 1.6; max-width: 440px; margin: 0 auto 20px auto;">
+              Hi <strong>${params.recipientName}</strong>, your fresh vegetable basket is currently out for delivery. Please provide this 4-digit OTP to the delivery partner upon arrival.
+            </p>
+
+            <!-- OTP Highlight Card -->
+            <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px dashed #059669; border-radius: 16px; padding: 24px; display: inline-block; min-width: 260px; margin-bottom: 20px;">
+              <div style="color: #065f46; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">Delivery Handover OTP</div>
+              <div style="font-family: 'Courier New', Courier, monospace; font-size: 42px; font-weight: 900; letter-spacing: 14px; color: #065f46; padding-left: 14px;">${params.otp}</div>
+              <div style="color: #047857; font-size: 11px; font-weight: 600; margin-top: 6px;">Valid for 1 Hour</div>
+            </div>
+
+            <!-- Destination Address (if available) -->
+            ${params.deliveryAddress ? `
+              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin: 16px auto; max-width: 440px; text-align: left;">
+                <p style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; margin: 0 0 4px 0;">Delivery Address</p>
+                <p style="color: #1e293b; font-size: 13px; font-weight: 600; margin: 0; line-height: 1.4;">${params.deliveryAddress}</p>
+              </div>
+            ` : ''}
+
+            <!-- Security Notice -->
+            <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 12px 16px; max-width: 440px; margin: 16px auto 0 auto; text-align: left;">
+              <p style="color: #92400e; font-size: 12px; line-height: 1.5; margin: 0;">
+                ⚠️ <strong>Important:</strong> Only share this OTP with the delivery executive once you have received and verified your package.
+              </p>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center;">
+            <p style="color: #065f46; font-size: 12px; font-weight: 700; margin: 0;">Easy Farm — Farm-Fresh Vegetables</p>
+            <p style="color: #94a3b8; font-size: 11px; margin: 4px 0 0 0;">Ghatkesar & Pocharam Corridor, Telangana • Support: easyfarmsupport@gmail.com</p>
+          </div>
+        </div>
+      `;
+
+      return await this.sendWithFallback({
+        to: [params.toEmail],
+        subject: `Your Delivery OTP is ${params.otp} — Easy Farm Order #${params.orderId}`,
         html: htmlContent,
       });
     } catch (err: any) {

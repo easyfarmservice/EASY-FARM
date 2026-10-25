@@ -63,10 +63,15 @@ export async function POST(req: NextRequest) {
         profiles(id, full_name, phone)
       `);
 
-    if (rawOrderId.startsWith('ORD-')) {
-      const prefix = rawOrderId.replace('ORD-', '').toLowerCase();
+    if (rawOrderId.startsWith('ORD-') || rawOrderId.startsWith('EF')) {
+      const cleanPrefix = rawOrderId.replace(/^(ORD-|EF-?)/i, '').toLowerCase();
       const { data: allOrders } = await supabase.from('orders').select('id');
-      const matched = allOrders?.find((o) => o.id.slice(0, 6).toLowerCase() === prefix);
+      const matched = allOrders?.find(
+        (o) =>
+          o.id.toLowerCase().startsWith(cleanPrefix) ||
+          o.id.slice(0, 4).toLowerCase() === cleanPrefix ||
+          o.id.slice(0, 6).toLowerCase() === cleanPrefix
+      );
       if (matched) {
         query = query.eq('id', matched.id);
       } else {
