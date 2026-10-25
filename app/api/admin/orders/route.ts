@@ -129,14 +129,62 @@ export async function PATCH(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+    const nowIso = new Date().toISOString();
+
+    // 1. Fetch current order record to preserve notes and timeline
+    let ordQuery = supabase.from('orders').select('id, notes, status, created_at');
+    if (orderId.length === 36 && orderId.includes('-')) {
+      ordQuery = ordQuery.eq('id', orderId);
+    } else {
+      ordQuery = ordQuery.ilike('notes', `%${orderId}%`);
+    }
+    const { data: currentOrd } = await ordQuery.maybeSingle();
 
     const updateData: any = {
       status,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
-    if (status !== 'delivered') {
-      updateData.otp_verified = false;
-      updateData.delivered_at = null;
+
+    if (currentOrd) {
+      let meta: any = {};
+      if (currentOrd.notes) {
+        try {
+          if (currentOrd.notes.startsWith('{')) meta = JSON.parse(currentOrd.notes);
+          else meta = { originalNotes: currentOrd.notes };
+        } catch {
+          meta = { originalNotes: currentOrd.notes };
+        }
+      }
+      meta.timeline = meta.timeline || {};
+
+      if (status === 'confirmed' && !meta.timeline.confirmed_at) {
+        meta.timeline.confirmed_at = nowIso;
+      } else if ((status === 'harvest_scheduled' || status === 'harvested') && !meta.timeline.harvested_at) {
+        meta.timeline.harvested_at = nowIso;
+      } else if (status === 'packed' && !meta.timeline.packed_at) {
+        meta.timeline.packed_at = nowIso;
+      } else if (status === 'out_for_delivery' && !meta.timeline.out_for_delivery_at) {
+        meta.timeline.out_for_delivery_at = nowIso;
+      } else if (status === 'delivered') {
+        meta.timeline.delivered_at = nowIso;
+        updateData.delivered_at = nowIso;
+        updateData.otp_verified = true;
+      }
+
+      if (status !== 'delivered') {
+        updateData.otp_verified = false;
+        updateData.delivered_at = null;
+        if (meta.timeline.delivered_at) {
+          delete meta.timeline.delivered_at;
+        }
+      }
+
+      updateData.notes = JSON.stringify(meta);
+    } else {
+      if (status !== 'delivered') {
+        updateData.otp_verified = false;
+        updateData.delivered_at = null;
+      }
     }
 
     let query = supabase.from('orders').update(updateData);

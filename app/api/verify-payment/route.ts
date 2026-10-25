@@ -93,23 +93,36 @@ export async function POST(req: NextRequest) {
         if (ordByNotes?.id) targetDbOrderId = ordByNotes.id;
       }
 
-      // 2. Mark order as confirmed in database
-      if (targetDbOrderId) {
+      // 2. Mark order as confirmed in database with exact server-side confirmation timestamp
+      const confirmedAt = new Date().toISOString();
+      const targetQuery = targetDbOrderId
+        ? supabaseAdmin.from('orders').select('id, notes').eq('id', targetDbOrderId).maybeSingle()
+        : supabaseAdmin.from('orders').select('id, notes').ilike('notes', `%${orderId}%`).maybeSingle();
+
+      const { data: ordRecord } = await targetQuery;
+      let orderNotes: any = {};
+      if (ordRecord?.notes) {
+        try {
+          if (ordRecord.notes.startsWith('{')) orderNotes = JSON.parse(ordRecord.notes);
+          else orderNotes = { originalNotes: ordRecord.notes };
+        } catch {
+          orderNotes = { originalNotes: ordRecord.notes };
+        }
+      }
+      orderNotes.timeline = {
+        ...(orderNotes.timeline || {}),
+        confirmed_at: confirmedAt,
+      };
+
+      if (ordRecord?.id) {
         await supabaseAdmin
           .from('orders')
           .update({
             status: 'confirmed',
-            updated_at: new Date().toISOString(),
+            updated_at: confirmedAt,
+            notes: JSON.stringify(orderNotes),
           })
-          .eq('id', targetDbOrderId);
-      } else {
-        await supabaseAdmin
-          .from('orders')
-          .update({
-            status: 'confirmed',
-            updated_at: new Date().toISOString(),
-          })
-          .ilike('notes', `%${orderId}%`);
+          .eq('id', ordRecord.id);
       }
     } catch (dbErr) {
       console.warn('[Razorpay Verify] Order status update warning:', dbErr);
