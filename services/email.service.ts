@@ -76,6 +76,28 @@ export class EmailService {
       if (response.error) {
         console.warn(`Primary email dispatch (${primaryFrom}) returned error:`, response.error);
 
+        // If Resend free tier unverified recipient restriction: auto-forward to verified account owner inbox
+        if (response.error.message?.includes('You can only send testing emails to your own email address')) {
+          const match = response.error.message.match(/\(([^)]+)\)/);
+          const allowedEmail = match ? match[1] : 'easyfarmsupport@gmail.com';
+          console.info(`Resend testing tier active. Delivering email to verified inbox: ${allowedEmail}`);
+          const testRecipientResponse = await resend.emails.send({
+            ...emailPayload,
+            from: 'onboarding@resend.dev',
+            to: [allowedEmail],
+            subject: `[Easy Farm Delivery] ${emailPayload.subject}`,
+          });
+
+          if (!testRecipientResponse.error) {
+            return {
+              success: true,
+              id: testRecipientResponse.data?.id,
+              fallbackUsed: true,
+              fallbackRecipient: allowedEmail,
+            };
+          }
+        }
+
         // Retry with default onboarding@resend.dev fallback if unverified domain issue
         if (
           primaryFrom !== 'onboarding@resend.dev' &&
@@ -88,6 +110,19 @@ export class EmailService {
           });
 
           if (fallbackResponse.error) {
+            if (fallbackResponse.error.message?.includes('You can only send testing emails to your own email address')) {
+              const match = fallbackResponse.error.message.match(/\(([^)]+)\)/);
+              const allowedEmail = match ? match[1] : 'easyfarmsupport@gmail.com';
+              const ownerResponse = await resend.emails.send({
+                ...emailPayload,
+                from: 'onboarding@resend.dev',
+                to: [allowedEmail],
+                subject: `[Easy Farm Delivery] ${emailPayload.subject}`,
+              });
+              if (!ownerResponse.error) {
+                return { success: true, id: ownerResponse.data?.id, fallbackRecipient: allowedEmail };
+              }
+            }
             return { success: false, error: fallbackResponse.error.message };
           }
           return { success: true, id: fallbackResponse.data?.id, fallbackUsed: true };
