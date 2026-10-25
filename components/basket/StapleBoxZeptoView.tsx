@@ -19,6 +19,7 @@ import { Basket } from '@/types/database';
 import { useCart } from '@/components/cart/CartProvider';
 import { ReviewBasketDrawer } from '@/components/cart/ReviewBasketDrawer';
 import { getNextDeliveryDate } from '@/lib/constants';
+import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 export interface StapleItem {
   id: string;
@@ -400,13 +401,13 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
               >
                 {/* Left: Vegetable Photo */}
                 <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
-                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-[#F8F9FA] border border-slate-100 shrink-0 p-1 flex items-center justify-center">
+                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-[#F8F9FA] border border-slate-100 shrink-0 flex items-center justify-center">
                     <Image
-                      src={item.image_url || '/images/hero-vegetables.png'}
+                      src={getVegetableImageUrl(item.image_url, item.slug || item.name)}
                       alt={item.name}
                       fill
                       sizes="(max-width: 640px) 64px, 80px"
-                      className="object-contain p-1"
+                      className="object-cover"
                     />
                   </div>
 
@@ -576,7 +577,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                             {/* Thumbnail */}
                             <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-white border border-slate-100 shrink-0">
                               <Image
-                                src={alt.image_url || '/images/hero-vegetables.png'}
+                                src={getVegetableImageUrl(alt.image_url, alt.slug || alt.name)}
                                 alt={alt.name}
                                 fill
                                 className="object-cover"

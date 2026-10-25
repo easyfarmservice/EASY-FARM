@@ -21,6 +21,7 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { useCart } from '@/components/cart/CartProvider';
+import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 export default function CartPage() {
   const { items, updateQuantity, removeFromCart, subtotal, totalItems } = useCart();
@@ -188,9 +189,19 @@ export default function CartPage() {
                                 key={cIdx}
                                 className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100 text-xs"
                               >
-                                <div className="truncate pr-2">
-                                  <span className="font-bold text-slate-900">{cItem.productName}</span>
-                                  <span className="text-[10px] text-slate-400 block">{cItem.quantity} {cItem.unit}</span>
+                                <div className="flex items-center gap-2 truncate pr-2">
+                                  <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-white shrink-0 border border-slate-200/60">
+                                    <Image
+                                      src={getVegetableImageUrl(cItem.image_url, cItem.productName)}
+                                      alt={cItem.productName}
+                                      fill
+                                      className="object-cover"
+                                    />
+                                  </div>
+                                  <div className="truncate">
+                                    <span className="font-bold text-slate-900 block truncate">{cItem.productName}</span>
+                                    <span className="text-[10px] text-slate-400 block">{cItem.quantity} {cItem.unit}</span>
+                                  </div>
                                 </div>
                                 {cItem.price !== undefined && (
                                   <span className="font-bold text-emerald-950 shrink-0">₹{cItem.price}</span>

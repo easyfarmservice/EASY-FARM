@@ -15,6 +15,7 @@ import {
 import { Product, Basket } from '@/types/database';
 import { useCart } from '@/components/cart/CartProvider';
 import { ReviewBasketDrawer } from '@/components/cart/ReviewBasketDrawer';
+import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 interface CustomBoxZeptoViewProps {
   products: Product[];
@@ -51,6 +52,7 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
         s.includes('palak') ||
         s.includes('spinach') ||
         s.includes('thotakura') ||
+        s.includes('amaranth') ||
         s.includes('leaves') ||
         s.includes('coriander') ||
         s.includes('curry') ||
@@ -70,10 +72,12 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
         s.includes('cucumber') ||
         s.includes('okra') ||
         s.includes('bhendi') ||
+        s.includes('bhindi') ||
         s.includes('beans') ||
         s.includes('brinjal') ||
         s.includes('tomato') ||
-        s.includes('chilli')
+        s.includes('chilli') ||
+        s.includes('capsicum')
       ) {
         cat = 'gourds';
       } else {
@@ -148,7 +152,7 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
       unit: p.unit || 'kg',
       price: p.price,
       compare_at_price: p.market_price,
-      image_url: p.image_url,
+      image_url: getVegetableImageUrl(p.image_url, p.slug || p.name),
     }));
 
     const finalBasketObj: Basket = {
@@ -285,13 +289,13 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
                     </div>
 
                     {/* Centered Vegetable Photo */}
-                    <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-[#FBFBFA] border border-slate-100 flex items-center justify-center p-2 mb-3">
+                    <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-[#FBFBFA] border border-slate-100/90 mb-3">
                       <Image
-                        src={p.image_url || '/images/hero-vegetables.png'}
+                        src={getVegetableImageUrl(p.image_url, p.slug || p.name)}
                         alt={p.name}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                        className="object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     </div>
 

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { X, ArrowLeft, ArrowRight, Plus, Minus, ShoppingBag, Trash2 } from 'lucide-react';
 import { useCart } from './CartProvider';
+import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 interface ReviewBasketDrawerProps {
   isOpen: boolean;
@@ -150,7 +151,7 @@ export function ReviewBasketDrawer({ isOpen, onClose }: ReviewBasketDrawerProps)
                               <div className="flex items-center gap-2 truncate">
                                 <div className="relative w-7 h-7 rounded-lg overflow-hidden bg-slate-50 shrink-0 border border-slate-100">
                                   <Image
-                                    src={it.image_url || '/images/hero-vegetables.png'}
+                                    src={getVegetableImageUrl(it.image_url, it.productName)}
                                     alt={it.productName}
                                     fill
                                     className="object-cover"
