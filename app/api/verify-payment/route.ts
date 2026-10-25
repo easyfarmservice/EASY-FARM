@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { EmailService } from '@/services/email.service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -123,6 +124,41 @@ export async function POST(req: NextRequest) {
             notes: JSON.stringify(orderNotes),
           })
           .eq('id', ordRecord.id);
+      }
+
+      // 3. Dispatch official Order Confirmation email now that payment has succeeded
+      try {
+        const customerEmail = orderNotes.customerEmail || 'customer@example.com';
+        const customerName = orderNotes.customerName || 'Valued Resident';
+        const displayOrderId = orderNotes.orderNumber || appOrderId || orderId;
+        const totalAmount = Number(orderNotes.total || (payRow as any)?.amount || 0);
+        const deliveryAddress =
+          orderNotes.fullAddress ||
+          `${orderNotes.flatNo || ''}, ${orderNotes.apartment || ''}, ${orderNotes.locality || ''} — ${orderNotes.pincode || ''}`.replace(
+            /^[,\s]+|[,\s]+$/g,
+            ''
+          ) ||
+          'Ghatkesar & Pocharam Corridor';
+
+        const emailItems = (orderNotes.items || []).map((i: any) => ({
+          name: i.basketName || i.name || 'Weekly Harvest Basket',
+          qty: i.quantity || 1,
+          price: Number(i.unitPrice || i.price || totalAmount),
+        }));
+
+        await EmailService.sendOrderConfirmation({
+          toEmail: customerEmail,
+          recipientName: customerName,
+          orderId: displayOrderId,
+          total: totalAmount,
+          deliveryAddress,
+          items:
+            emailItems.length > 0
+              ? emailItems
+              : [{ name: 'Weekly Harvest Basket', qty: 1, price: totalAmount }],
+        });
+      } catch (emailErr) {
+        console.warn('[Razorpay Verify] Confirmation email sending notice:', emailErr);
       }
     } catch (dbErr) {
       console.warn('[Razorpay Verify] Order status update warning:', dbErr);

@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 
 import { formatIST, formatTimelineIST, formatDeliveryDateIST } from '@/lib/utils/format-ist';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
+import { BottomNav } from '@/components/layout/BottomNav';
 
 interface OrderTimeline {
   confirmed_at: string | null;
@@ -293,43 +296,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </svg>
       </div>
 
-      {/* TOP HEADER */}
-      <header className="w-full max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-4 flex items-center justify-between relative z-10">
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-9 h-9 rounded-xl bg-emerald-800 flex items-center justify-center text-white shadow-sm transition group-hover:scale-105">
-            <Leaf className="w-5 h-5 text-emerald-300" />
-          </div>
-          <div>
-            <span className="font-extrabold text-xl tracking-tight text-emerald-950 block leading-tight">
-              Easy Farm
-            </span>
-            <span className="text-[10px] text-emerald-800 font-semibold italic block -mt-0.5">
-              Freshness, delivered differently.
-            </span>
-          </div>
-        </Link>
-
-        <nav className="flex items-center gap-4 text-xs font-bold text-emerald-950">
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 hover:text-emerald-700 transition px-2 py-1"
-          >
-            <Home className="w-4 h-4 text-emerald-800" />
-            <span>Home</span>
-          </Link>
-          <span className="text-slate-300">|</span>
-          <Link
-            href="/account"
-            className="flex items-center gap-1.5 hover:text-emerald-700 transition px-2 py-1"
-          >
-            <User className="w-4 h-4 text-emerald-800" />
-            <span>My Orders</span>
-          </Link>
-        </nav>
-      </header>
+      {/* MAIN SITE HEADER */}
+      <Header />
 
       {/* MAIN CONTAINER */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 space-y-6 pt-2 pb-12 relative z-10">
+      <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 space-y-6 pt-6 pb-12 w-full relative z-10">
         {/* BANNER: CONFIRMATION & CRATE ILLUSTRATION */}
         <div className="text-center space-y-4 pt-2">
           {/* Green Checkmark Badge with Harvest Crate */}
@@ -720,6 +691,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       </main>
+      <Footer />
+      <BottomNav />
     </div>
   );
 }

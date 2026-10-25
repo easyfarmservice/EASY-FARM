@@ -294,23 +294,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 8. Trigger order confirmation email
-    try {
-      await EmailService.sendOrderConfirmation({
-        toEmail: customerEmail,
-        recipientName: address.fullName,
-        orderId,
-        total: finalTotal,
-        deliveryAddress: `${address.flatNo}, ${address.apartment}, ${address.locality} — ${address.pincode}`,
-        items: (serverPricing.itemsBreakdown || []).map((i: any) => ({
-          name: i.basketName,
-          qty: i.quantity,
-          price: i.totalPrice,
-        })),
-      });
-    } catch (emailErr) {
-      console.warn('Confirmation email sending notice:', emailErr);
-    }
+    // Note: Order confirmation email is dispatched strictly in /api/verify-payment after successful Razorpay payment capture
 
     return NextResponse.json({
       success: true,
