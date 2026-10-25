@@ -65,7 +65,7 @@ export class EmailService {
     html: string;
   }) {
     const resend = getResendClient();
-    const primaryFrom = emailPayload.from || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const primaryFrom = emailPayload.from || process.env.RESEND_FROM_EMAIL || 'Easy Farm <onboarding@resend.dev>';
 
     try {
       const response = await resend.emails.send({
@@ -83,7 +83,7 @@ export class EmailService {
           console.info(`Resend testing tier active. Delivering email to verified inbox: ${allowedEmail}`);
           const testRecipientResponse = await resend.emails.send({
             ...emailPayload,
-            from: 'onboarding@resend.dev',
+            from: primaryFrom || 'Easy Farm <onboarding@resend.dev>',
             to: [allowedEmail],
             subject: `[Easy Farm Delivery] ${emailPayload.subject}`,
           });
