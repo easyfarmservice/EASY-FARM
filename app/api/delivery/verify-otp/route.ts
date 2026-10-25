@@ -4,6 +4,7 @@ import { checkRateLimit } from '@/lib/security/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyDeliveryOtpHash } from '@/lib/delivery-otp';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
+import { EmailService } from '@/services/email.service';
 
 export async function POST(req: NextRequest) {
   // 1. Rate limiting check (max 30 verify attempts per minute)
@@ -54,13 +55,15 @@ export async function POST(req: NextRequest) {
       .select(`
         id,
         status,
+        notes,
         delivery_otp_hash,
         otp_created_at,
         otp_expires_at,
         otp_verified,
         otp_attempts,
         delivered_at,
-        profiles(id, full_name, phone)
+        profiles(id, full_name, phone, email),
+        customer_addresses(full_address, apartment, locality)
       `);
 
     if (rawOrderId.startsWith('ORD-') || rawOrderId.startsWith('EF')) {
@@ -257,12 +260,62 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 12. Dispatch "Order Delivered" confirmation email to customer via Resend
+    let meta: any = null;
+    if (order.notes) {
+      try {
+        if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
+      } catch {}
+    }
+
+    const customerEmail =
+      meta?.customerEmail ||
+      (order.profiles as any)?.email ||
+      '';
+
+    const customerName =
+      meta?.customerName ||
+      (order.profiles as any)?.full_name ||
+      'Valued Resident';
+
+    const displayOrderId =
+      meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
+
+    const deliveryAddress =
+      meta?.fullAddress ||
+      (order.customer_addresses as any)?.full_address ||
+      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
+        .filter(Boolean)
+        .join(', ') ||
+      'Ghatkesar & Pocharam Corridor';
+
+    let deliveryEmailSent = false;
+    if (customerEmail) {
+      try {
+        const emailRes = await EmailService.sendOrderDeliveredEmail({
+          toEmail: customerEmail,
+          recipientName: customerName,
+          orderId: displayOrderId,
+          deliveryAddress,
+          deliveredAt: new Date(deliveredAt).toLocaleString('en-IN', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+        });
+        deliveryEmailSent = Boolean(emailRes.success);
+      } catch (emailErr) {
+        console.error('[VerifyOTP] Error sending delivery confirmation email:', emailErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Delivery verified successfully.',
+      message: 'Delivery verified successfully and confirmation email sent to customer.',
       order_id: order.id,
       delivered_at: deliveredAt,
       status: 'delivered',
+      delivery_email_sent: deliveryEmailSent,
+      customer_email: customerEmail,
     });
   } catch (err: any) {
     console.error('[VerifyOTP] Exception:', err);

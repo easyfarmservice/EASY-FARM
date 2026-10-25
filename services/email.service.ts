@@ -54,6 +54,15 @@ export interface SendDeliveryOtpParams {
   deliveryAddress?: string;
 }
 
+export interface SendOrderDeliveredParams {
+  toEmail: string;
+  recipientName: string;
+  orderId: string;
+  deliveryAddress?: string;
+  deliveredAt?: string;
+  items?: Array<{ name: string; quantity: number }>;
+}
+
 export class EmailService {
   /**
    * Safe email dispatch helper with fallback to onboarding@resend.dev
@@ -356,6 +365,88 @@ export class EmailService {
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Your Delivery OTP is ${params.otp} — Easy Farm Order #${params.orderId}`,
+        html: htmlContent,
+      });
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Send Order Delivered Confirmation Email to Customer via Resend API
+   */
+  static async sendOrderDeliveredEmail(params: SendOrderDeliveredParams) {
+    if (!isResendConfigured()) {
+      return { success: false, reason: 'API key not configured' };
+    }
+
+    try {
+      const deliveredTime = params.deliveredAt || new Date().toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <!-- Header -->
+          <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #065f46;">
+            <h1 style="color: #065f46; margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px;">EASY FARM</h1>
+            <p style="color: #047857; font-size: 11px; margin-top: 4px; text-transform: uppercase; font-weight: 700; letter-spacing: 1px;">Fresh Harvest Delivery Confirmed</p>
+          </div>
+
+          <!-- Body -->
+          <div style="padding: 24px 0; text-align: center;">
+            <div style="width: 56px; height: 56px; background-color: #dcfce7; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+              <span style="font-size: 28px; color: #15803d; font-weight: bold; line-height: 1;">✓</span>
+            </div>
+
+            <div style="display: block; margin-bottom: 8px;">
+              <span style="background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 12px; font-weight: 800; text-transform: uppercase; padding: 4px 14px; border-radius: 20px;">
+                DELIVERED SUCCESSFULLY
+              </span>
+            </div>
+
+            <h2 style="color: #0f172a; font-size: 22px; font-weight: 800; margin: 12px 0 8px 0;">Order #${params.orderId} Has Arrived!</h2>
+            <p style="color: #475569; font-size: 14px; line-height: 1.6; max-width: 440px; margin: 0 auto 20px auto;">
+              Hi <strong>${params.recipientName}</strong>, your fresh vegetable basket has been safely handed over to you. We hope you enjoy today's fresh harvest!
+            </p>
+
+            <!-- Delivery Details Box -->
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; margin: 16px auto; max-width: 440px; text-align: left;">
+              <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 10px;">
+                <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; display: block;">Delivered At</span>
+                <span style="color: #0f172a; font-size: 13px; font-weight: 800;">${deliveredTime}</span>
+              </div>
+              ${params.deliveryAddress ? `
+                <div>
+                  <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px;">Delivery Destination</span>
+                  <span style="color: #1e293b; font-size: 13px; font-weight: 700; line-height: 1.4;">${params.deliveryAddress}</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Freshness Promise -->
+            <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 14px 18px; max-width: 440px; margin: 16px auto 0 auto; text-align: left;">
+              <p style="color: #065f46; font-size: 12px; font-weight: 700; margin: 0 0 4px 0;">
+                🌾 Direct Farmer Transparency
+              </p>
+              <p style="color: #047857; font-size: 12px; line-height: 1.5; margin: 0;">
+                Harvested directly from our verified partner farms in Chevella and Shankarpally.
+              </p>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center;">
+            <p style="color: #065f46; font-size: 12px; font-weight: 700; margin: 0;">Easy Farm — Farm-Fresh Vegetables</p>
+            <p style="color: #94a3b8; font-size: 11px; margin: 4px 0 0 0;">Have feedback on today's produce? Reach us anytime at easyfarmsupport@gmail.com</p>
+          </div>
+        </div>
+      `;
+
+      return await this.sendWithFallback({
+        to: [params.toEmail],
+        subject: `Delivered! Easy Farm Order #${params.orderId}`,
         html: htmlContent,
       });
     } catch (err: any) {

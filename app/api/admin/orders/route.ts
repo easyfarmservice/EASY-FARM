@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { EmailService } from '@/services/email.service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -129,10 +130,16 @@ export async function PATCH(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    let query = supabase.from('orders').update({
+    const updateData: any = {
       status,
       updated_at: new Date().toISOString(),
-    });
+    };
+    if (status !== 'delivered') {
+      updateData.otp_verified = false;
+      updateData.delivered_at = null;
+    }
+
+    let query = supabase.from('orders').update(updateData);
 
     if (orderId.length === 36 && orderId.includes('-')) {
       query = query.eq('id', orderId);
@@ -143,6 +150,58 @@ export async function PATCH(req: NextRequest) {
     const { error } = await query;
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    // If order was marked as delivered, dispatch confirmation email to customer
+    if (status === 'delivered') {
+      try {
+        let orderQuery = supabase
+          .from('orders')
+          .select(`
+            id,
+            notes,
+            profiles(full_name, email),
+            customer_addresses(full_address, apartment, locality)
+          `);
+
+        if (orderId.length === 36 && orderId.includes('-')) {
+          orderQuery = orderQuery.eq('id', orderId);
+        } else {
+          orderQuery = orderQuery.ilike('notes', `%${orderId}%`);
+        }
+
+        const { data: matchedOrder } = await orderQuery.maybeSingle();
+        if (matchedOrder) {
+          let meta: any = null;
+          if (matchedOrder.notes) {
+            try {
+              if (matchedOrder.notes.startsWith('{')) meta = JSON.parse(matchedOrder.notes);
+            } catch {}
+          }
+
+          const customerEmail = meta?.customerEmail || (matchedOrder.profiles as any)?.email || '';
+          const customerName = meta?.customerName || (matchedOrder.profiles as any)?.full_name || 'Valued Resident';
+          const displayOrderId = meta?.orderNumber || `EF${matchedOrder.id.slice(0, 4).toUpperCase()}`;
+          const deliveryAddress =
+            meta?.fullAddress ||
+            (matchedOrder.customer_addresses as any)?.full_address ||
+            [(matchedOrder.customer_addresses as any)?.apartment, (matchedOrder.customer_addresses as any)?.locality]
+              .filter(Boolean)
+              .join(', ') ||
+            'Ghatkesar & Pocharam Corridor';
+
+          if (customerEmail) {
+            await EmailService.sendOrderDeliveredEmail({
+              toEmail: customerEmail,
+              recipientName: customerName,
+              orderId: displayOrderId,
+              deliveryAddress,
+            });
+          }
+        }
+      } catch (emailErr) {
+        console.error('[Admin Orders PATCH] Error sending delivered email:', emailErr);
+      }
     }
 
     return NextResponse.json({
