@@ -54,24 +54,70 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Optional: Update matching order record in database if found
+    const appOrderId = body.app_order_id || body.appOrderId;
+
+    // Update order and payment records in database
     try {
       const supabaseAdmin = createAdminClient();
-      await supabaseAdmin
-        .from('orders')
-        .update({
-          status: 'confirmed',
-          notes: `Paid via Razorpay. Payment ID: ${paymentId}`,
-        })
-        .or(`id.eq.${orderId},notes.ilike.%${orderId}%`);
+
+      // 1. Look up payment by Razorpay order ID
+      const { data: payRow } = await supabaseAdmin
+        .from('payments')
+        .select('id, order_id')
+        .eq('provider_order_id', orderId)
+        .maybeSingle();
+
+      let targetDbOrderId = payRow?.order_id || null;
+
+      // Update payments record to captured
+      if (payRow?.id) {
+        await supabaseAdmin
+          .from('payments')
+          .update({
+            status: 'captured',
+            provider_payment_id: paymentId,
+            signature,
+            method: 'razorpay',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', payRow.id);
+      }
+
+      // If targetDbOrderId not found, check orders by notes
+      if (!targetDbOrderId && appOrderId) {
+        const { data: ordByNotes } = await supabaseAdmin
+          .from('orders')
+          .select('id, notes')
+          .ilike('notes', `%${appOrderId}%`)
+          .maybeSingle();
+        if (ordByNotes?.id) targetDbOrderId = ordByNotes.id;
+      }
+
+      // 2. Mark order as confirmed in database
+      if (targetDbOrderId) {
+        await supabaseAdmin
+          .from('orders')
+          .update({
+            status: 'confirmed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', targetDbOrderId);
+      } else {
+        await supabaseAdmin
+          .from('orders')
+          .update({
+            status: 'confirmed',
+            updated_at: new Date().toISOString(),
+          })
+          .ilike('notes', `%${orderId}%`);
+      }
     } catch (dbErr) {
-      // Non-blocking database update
-      console.warn('[Razorpay Verify] Optional DB order update notice:', dbErr);
+      console.warn('[Razorpay Verify] Order status update warning:', dbErr);
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Payment verified successfully',
+      message: 'Payment verified and order confirmed successfully',
       order_id: orderId,
       payment_id: paymentId,
     });

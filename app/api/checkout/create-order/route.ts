@@ -157,7 +157,36 @@ export async function POST(req: NextRequest) {
     // 6. PERSIST TO DATABASE (Server-side admin client)
     const supabaseAdmin = createAdminClient();
 
-    // If customer profile exists, upsert / save address
+    // Ensure customer profile exists for both registered and guest users
+    if (!customerProfileId && (customerEmail || address.phone)) {
+      try {
+        const { data: existingProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('id')
+          .or(`phone.eq.${address.phone},email.eq.${customerEmail}`)
+          .maybeSingle();
+
+        if (existingProfile?.id) {
+          customerProfileId = existingProfile.id;
+        } else {
+          const { data: newProfile } = await supabaseAdmin
+            .from('profiles')
+            .insert({
+              full_name: address.fullName || 'Resident',
+              phone: address.phone,
+              email: customerEmail || `${address.phone}@guest.easyfarm.in`,
+              role: 'customer',
+            })
+            .select('id')
+            .maybeSingle();
+          if (newProfile?.id) customerProfileId = newProfile.id;
+        }
+      } catch (profErr) {
+        console.warn('Could not upsert guest profile:', profErr);
+      }
+    }
+
+    // Save customer address record
     let savedAddressId: string | null = null;
     if (customerProfileId) {
       try {
@@ -165,8 +194,8 @@ export async function POST(req: NextRequest) {
           .from('customer_addresses')
           .insert({
             customer_id: customerProfileId,
-            label: address.label,
-            full_address: address.flatNo,
+            label: address.label || 'Home',
+            full_address: `${address.flatNo}, ${address.apartment}`,
             apartment: address.apartment,
             locality: address.locality,
             pincode: address.pincode,
@@ -185,6 +214,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Comprehensive JSON order metadata for Admin Panel & My Orders
+    const orderMetadata = {
+      orderNumber: orderId,
+      customerName: address.fullName,
+      customerPhone: address.phone,
+      customerEmail: customerEmail,
+      flatNo: address.flatNo,
+      apartment: address.apartment,
+      locality: address.locality,
+      pincode: address.pincode,
+      fullAddress: `${address.flatNo}, ${address.apartment}, ${address.locality}, PIN ${address.pincode}`,
+      couponCode: couponCode || null,
+      items: serverPricing.itemsBreakdown,
+      deliveryPromise: serviceability.delivery_promise || 'Sunday by 6 PM',
+      deliveryZone: serviceability.zone_name || 'Ghatkesar & Pocharam',
+    };
+
     // Insert order record
     let newOrderRecord: any = null;
     try {
@@ -200,7 +246,7 @@ export async function POST(req: NextRequest) {
           delivery_fee: finalDeliveryFee,
           total: finalTotal,
           delivery_date: deliveryDateStr,
-          notes: couponCode ? `Coupon: ${couponCode}` : null,
+          notes: JSON.stringify(orderMetadata),
         })
         .select()
         .maybeSingle();
@@ -215,7 +261,7 @@ export async function POST(req: NextRequest) {
           await supabaseAdmin.from('order_items').insert(
             serverPricing.itemsBreakdown.map((item: any) => ({
               order_id: newOrderRecord.id,
-              basket_id: item.basketId,
+              basket_id: item.basketId && item.basketId.length > 20 ? item.basketId : null,
               basket_name: item.basketName,
               quantity: item.quantity,
               unit_price: item.unitPrice,
@@ -230,6 +276,23 @@ export async function POST(req: NextRequest) {
 
     // 7. Create Payment Order (Razorpay)
     const paymentOrder = await PaymentService.createPaymentOrder(orderId, finalTotal);
+
+    // Save initial record to payments table linked with Razorpay Order ID
+    if (newOrderRecord?.id && paymentOrder?.id) {
+      try {
+        await supabaseAdmin.from('payments').insert({
+          order_id: newOrderRecord.id,
+          provider: 'razorpay',
+          provider_order_id: paymentOrder.id,
+          amount: finalTotal,
+          currency: 'INR',
+          status: 'pending',
+          metadata: { orderNumber: orderId, razorpayOrderId: paymentOrder.id },
+        });
+      } catch (payErr) {
+        console.warn('Payments table insert warning:', payErr);
+      }
+    }
 
     // 8. Trigger order confirmation email
     try {

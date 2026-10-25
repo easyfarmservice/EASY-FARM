@@ -541,6 +541,7 @@ export default function CheckoutPage() {
                   razorpay_order_id: paymentResp.razorpay_order_id,
                   razorpay_payment_id: paymentResp.razorpay_payment_id,
                   razorpay_signature: paymentResp.razorpay_signature,
+                  app_order_id: confirmedOrderId,
                 }),
               });
 
@@ -549,24 +550,34 @@ export default function CheckoutPage() {
                 throw new Error(verifyData.error || 'Payment signature verification failed.');
               }
 
-              // Save order to localStorage
+              // Save order to localStorage and track in order IDs list
               if (typeof window !== 'undefined') {
-                localStorage.setItem(
-                  `easyfarm_order_${confirmedOrderId}`,
-                  JSON.stringify({
-                    orderId: confirmedOrderId,
-                    address: activeAddress,
-                    items,
-                    subtotal: data.subtotal,
-                    couponDiscount: data.couponDiscount,
-                    couponCode: appliedCouponCode,
-                    deliveryFee: data.deliveryFee,
-                    total: data.total,
-                    deliveryZone: data.deliveryZone,
-                    paymentId: paymentResp.razorpay_payment_id,
-                    createdAt: new Date().toISOString(),
-                  })
-                );
+                const orderData = {
+                  orderId: confirmedOrderId,
+                  address: activeAddress,
+                  items,
+                  subtotal: data.subtotal,
+                  couponDiscount: data.couponDiscount,
+                  couponCode: appliedCouponCode,
+                  deliveryFee: data.deliveryFee,
+                  total: data.total,
+                  deliveryZone: data.deliveryZone,
+                  paymentId: paymentResp.razorpay_payment_id,
+                  paymentStatus: 'paid',
+                  status: 'confirmed',
+                  createdAt: new Date().toISOString(),
+                };
+
+                localStorage.setItem(`easyfarm_order_${confirmedOrderId}`, JSON.stringify(orderData));
+
+                try {
+                  const existingIdsStr = localStorage.getItem('easyfarm_order_ids');
+                  const existingIds: string[] = existingIdsStr ? JSON.parse(existingIdsStr) : [];
+                  if (!existingIds.includes(confirmedOrderId)) {
+                    existingIds.unshift(confirmedOrderId);
+                    localStorage.setItem('easyfarm_order_ids', JSON.stringify(existingIds));
+                  }
+                } catch {}
               }
 
               clearCart();
