@@ -93,7 +93,7 @@ export default function CheckoutPage() {
       apartment: result.placeName || result.communityName || prev.apartment || 'Rajeev Gruha Kalpa',
     }));
     if (result.isServiceable) {
-      setError(null);
+      setError((prev) => (prev && (prev.includes('corridor') || prev.includes('Outside') || prev.includes('Pinned')) ? null : prev));
     } else {
       setError('Pinned location is outside our active Ghatkesar Sunday delivery corridor. Please move the pin to Rajeev Gruha Kalpa, Singapore Township, or nearby Ghatkesar communities.');
     }
@@ -437,7 +437,12 @@ export default function CheckoutPage() {
     const cleanPincode = (activeAddress.pincode || '500088').replace(/\D/g, '').slice(0, 6) || '500088';
 
     if (!activeAddress.fullName || !cleanPhone || !activeAddress.apartment || !activeAddress.flatNo) {
-      setError('Please provide complete recipient details and address before proceeding.');
+      const missing = [];
+      if (!activeAddress.fullName) missing.push('Full Name');
+      if (!cleanPhone) missing.push('Phone Number (10 digits)');
+      if (!activeAddress.apartment) missing.push('Apartment / Building Name');
+      if (!activeAddress.flatNo) missing.push('Flat / Door Number');
+      setError(`Please provide recipient details: ${missing.join(', ')}.`);
       setShowAddForm(true);
       setStep(1);
       return;
@@ -885,6 +890,56 @@ export default function CheckoutPage() {
                       setError('Your delivery location needs to be confirmed on the map within the Ghatkesar Sunday delivery corridor.');
                       return;
                     }
+
+                    const target = savedAddresses.find((a) => a.id === selectedAddressId) || formAddress;
+                    const rawPhone = (target.phone || '').replace(/\D/g, '');
+                    const cleanPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : rawPhone;
+
+                    if (!target.fullName || target.fullName.trim().length === 0) {
+                      setShowAddForm(true);
+                      setError('Please enter Recipient Full Name before continuing.');
+                      return;
+                    }
+
+                    if (!cleanPhone || cleanPhone.length < 10) {
+                      setShowAddForm(true);
+                      setError('Please enter a valid 10-digit Phone Number.');
+                      return;
+                    }
+
+                    if (!target.apartment || target.apartment.trim().length === 0) {
+                      setShowAddForm(true);
+                      setError('Please enter your Apartment / Building / Community Name.');
+                      return;
+                    }
+
+                    if (!target.flatNo || target.flatNo.trim().length === 0) {
+                      setShowAddForm(true);
+                      setError('Please enter your Flat / House / Door Number.');
+                      return;
+                    }
+
+                    // Auto-save address if user filled form without clicking "Save Address & Select"
+                    if (showAddForm || savedAddresses.length === 0 || !savedAddresses.some((a) => a.id === selectedAddressId)) {
+                      const newId = `addr_${Date.now()}`;
+                      const newAddrObj: SavedAddress = {
+                        ...formAddress,
+                        id: newId,
+                        fullName: target.fullName.trim(),
+                        phone: cleanPhone,
+                        apartment: target.apartment.trim(),
+                        flatNo: target.flatNo.trim(),
+                        latitude: pinnedCoords.lat,
+                        longitude: pinnedCoords.lng,
+                        isDefault: savedAddresses.length === 0,
+                      };
+                      const updated = [...savedAddresses, newAddrObj];
+                      setSavedAddresses(updated);
+                      setSelectedAddressId(newId);
+                      saveUserAddresses(currentUser, updated);
+                      setShowAddForm(false);
+                    }
+
                     setError(null);
                     setStep(2);
                   }}
