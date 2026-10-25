@@ -17,14 +17,15 @@ export const metadata: Metadata = {
     'Order fresh weekly vegetable baskets sourced directly from local Telangana farmers and delivered every Sunday to Singapore Township, Emerald Heights & gated communities in Ghatkesar, Hyderabad.',
   icons: {
     icon: [
-      { url: '/images/logo-icon.png', sizes: 'any' },
-      { url: '/images/logo-icon.svg', type: 'image/svg+xml' },
-      { url: '/favicon.ico' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', sizes: '512x512', type: 'image/png' },
+      { url: '/images/logo-icon.png', sizes: 'any', type: 'image/png' },
     ],
     apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
       { url: '/images/logo-icon.png', sizes: '180x180', type: 'image/png' },
     ],
-    shortcut: ['/images/logo-icon.png'],
+    shortcut: ['/favicon.ico'],
   },
 };
 

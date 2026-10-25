@@ -95,10 +95,47 @@ export class BasketService {
   }
 
   static async getBasketByIdOrSlug(idOrSlug: string): Promise<Basket | null> {
+    const raw = (idOrSlug || '').toLowerCase().trim();
     const baskets = await this.getActiveBaskets();
-    return (
-      baskets.find((b) => b.id === idOrSlug || b.slug === idOrSlug) || null
+
+    // 1. Direct match (case-insensitive)
+    const exact = baskets.find(
+      (b) => b.id.toLowerCase() === raw || b.slug.toLowerCase() === raw
     );
+    if (exact) return exact;
+
+    // 2. Staple / Stable Box matching (handles 'stable-basket', 'staple-basket', 'staple-box', 'stable-box', 'stable', 'staple', etc.)
+    if (
+      raw.includes('staple') ||
+      raw.includes('stable') ||
+      raw === 'box-1' ||
+      raw === 'b-01' ||
+      raw.endsWith('1')
+    ) {
+      const staple = baskets.find(
+        (b) => b.slug?.toLowerCase().includes('staple') || b.id.endsWith('1')
+      );
+      if (staple) return staple;
+      return DEFAULT_BASKETS[0];
+    }
+
+    // 3. Custom Box matching ('custom-basket', 'custom-box', 'custom', etc.)
+    if (
+      raw.includes('custom') ||
+      raw === 'box-2' ||
+      raw === 'b-02' ||
+      raw === 'b-04' ||
+      raw.endsWith('4')
+    ) {
+      const custom = baskets.find(
+        (b) => b.slug?.toLowerCase().includes('custom') || b.id.endsWith('4')
+      );
+      if (custom) return custom;
+      return DEFAULT_BASKETS[1];
+    }
+
+    // 4. Fallback to default staple basket instead of returning null and triggering a 404
+    return baskets[0] || DEFAULT_BASKETS[0];
   }
 }
 

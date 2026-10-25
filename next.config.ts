@@ -41,6 +41,60 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.supabase.co' },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/stable-basket',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/staple-basket',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/stable-box',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/staple-box',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/stable',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/staple',
+        destination: '/baskets/staple-basket',
+        permanent: true,
+      },
+      {
+        source: '/custom-basket',
+        destination: '/baskets/custom-basket',
+        permanent: true,
+      },
+      {
+        source: '/custom-box',
+        destination: '/baskets/custom-basket',
+        permanent: true,
+      },
+      {
+        source: '/custom',
+        destination: '/baskets/custom-basket',
+        permanent: true,
+      },
+      {
+        source: '/basket/:slug*',
+        destination: '/baskets/:slug*',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
