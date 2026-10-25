@@ -149,14 +149,14 @@ function LoginFormContent() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 2. VERIFY OTP CODE (Customer Supabase verifyOtp)
+  // 2. VERIFY OTP CODE (Customer Supabase verifyOtp with Multi-Tier Fallbacks)
   // ─────────────────────────────────────────────────────────────────────────────
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
+  const handleVerifyOtp = async (e?: React.FormEvent, directCode?: string) => {
     if (e) e.preventDefault();
-    const cleanOtp = otpCode.trim();
+    const cleanOtp = (directCode || otpCode).trim();
 
     if (cleanOtp.length < 6) {
-      setError('Please enter your verification code.');
+      setError('Please enter your 6-digit verification code.');
       return;
     }
 
@@ -167,33 +167,59 @@ function LoginFormContent() {
       const supabase = createClient();
       const cleanEmail = email.trim().toLowerCase();
 
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      // Tier 1: Standard 'email' token type
+      let verifyResult: { data: any; error: any } = await supabase.auth.verifyOtp({
         email: cleanEmail,
         token: cleanOtp,
         type: 'email',
       });
 
-      if (verifyErr) {
-        const msg = verifyErr.message.toLowerCase();
+      // Tier 2: 'magiclink' token type (if generated via admin generateLink)
+      if (verifyResult.error) {
+        const magicResult = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanOtp,
+          type: 'magiclink',
+        });
+        if (!magicResult.error && magicResult.data?.user) {
+          verifyResult = magicResult;
+        }
+      }
+
+      // Tier 3: Server-side fallback verification
+      if (verifyResult.error) {
+        try {
+          const apiRes = await fetch('/api/auth/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, otp: cleanOtp }),
+          });
+          const apiData = await apiRes.json();
+          if (apiRes.ok && apiData.success) {
+            verifyResult = { data: { user: apiData.user, session: apiData.session }, error: null };
+          }
+        } catch (_) {}
+      }
+
+      if (verifyResult.error || !verifyResult.data?.user) {
+        const msg = verifyResult.error?.message?.toLowerCase() || '';
         if (msg.includes('expired')) {
           setError('This verification code has expired. Please click "Resend verification code" below.');
         } else if (msg.includes('invalid') || msg.includes('token')) {
           setError('Incorrect verification code. Please check your email and try again.');
         } else {
-          setError(verifyErr.message || 'Verification failed. Please try again.');
+          setError(verifyResult.error?.message || 'Verification failed. Please try again.');
         }
         setOtpCode('');
         return;
       }
 
-      if (!data.user) {
-        throw new Error('Verification completed, but no user session was returned.');
-      }
+      const verifiedUser = verifyResult.data.user;
 
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, role, full_name')
-        .eq('auth_user_id', data.user.id)
+        .eq('auth_user_id', verifiedUser.id)
         .maybeSingle();
 
       const isAdmin = profile?.role === 'admin' || cleanEmail.endsWith('@easyfarm.in');
@@ -202,20 +228,29 @@ function LoginFormContent() {
         localStorage.setItem(
           'easyfarm_user',
           JSON.stringify({
-            id: profile?.id || data.user.id,
-            email: data.user.email,
+            id: profile?.id || verifiedUser.id,
+            email: verifiedUser.email || cleanEmail,
             fullName: profile?.full_name || cleanEmail.split('@')[0],
             role: isAdmin ? 'admin' : 'customer',
           })
         );
       }
 
+      setSuccessNotice('Signed in successfully! Redirecting...');
+
+      // Target redirect calculation
+      let targetUrl = '/account';
       if (isAdmin && isAdminTarget) {
-        router.push('/admin');
+        targetUrl = '/admin';
       } else if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
-        router.push(nextParam);
+        targetUrl = nextParam;
+      }
+
+      // Full document navigation ensures session cookies are dispatched with HTTP headers
+      if (typeof window !== 'undefined') {
+        window.location.href = targetUrl;
       } else {
-        router.push('/account');
+        router.push(targetUrl);
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
@@ -601,6 +636,10 @@ function LoginFormContent() {
                     onChange={(val) => {
                       setOtpCode(val);
                       if (error) setError(null);
+                    }}
+                    onComplete={(code) => {
+                      setOtpCode(code);
+                      handleVerifyOtp(undefined, code);
                     }}
                     hasError={Boolean(error)}
                     disabled={verifying}

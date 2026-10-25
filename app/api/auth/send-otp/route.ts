@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EmailService } from '@/services/email.service';
+import { setOtp } from '@/lib/otp-store';
 
 // Rate limiting: max 5 requests per 60 seconds per email
 const sendLog = new Map<string, number[]>();
@@ -114,6 +115,9 @@ export async function POST(request: Request) {
     // Genuine 6-digit OTP directly from Supabase
     const otpCode = linkData.properties.email_otp;
     console.log(`[AUTH 6-DIGIT OTP] >>> ${cleanEmail}: ${otpCode} <<<`);
+
+    // Store in memory for instant server-side verification fallback
+    setOtp(cleanEmail, otpCode);
 
     // 3. Send 6-digit OTP email via Resend
     const emailResult = await EmailService.sendOtpEmail({

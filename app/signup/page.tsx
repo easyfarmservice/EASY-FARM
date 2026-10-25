@@ -124,12 +124,12 @@ function SignupFormContent() {
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. VERIFY OTP CODE & COMPLETE PROFILE
   // ─────────────────────────────────────────────────────────────────────────────
-  const handleVerifySignupOtp = async (e?: React.FormEvent) => {
+  const handleVerifySignupOtp = async (e?: React.FormEvent, directCode?: string) => {
     if (e) e.preventDefault();
-    const cleanOtp = otpCode.trim();
+    const cleanOtp = (directCode || otpCode).trim();
 
     if (cleanOtp.length < 6) {
-      setError('Please enter your verification code.');
+      setError('Please enter your 6-digit verification code.');
       return;
     }
 
@@ -142,42 +142,78 @@ function SignupFormContent() {
       const cleanName = fullName.trim() || 'Resident';
       const cleanPhone = phone.trim();
 
-      // Verify OTP with Supabase
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      // Tier 1: Try standard 'email' OTP
+      let verifyResult: { data: any; error: any } = await supabase.auth.verifyOtp({
         email: cleanEmail,
         token: cleanOtp,
         type: 'email',
       });
 
-      if (verifyErr) {
-        const msg = verifyErr.message.toLowerCase();
+      // Tier 2: Try 'signup' token type
+      if (verifyResult.error) {
+        const signupResult = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanOtp,
+          type: 'signup',
+        });
+        if (!signupResult.error && signupResult.data?.user) {
+          verifyResult = signupResult;
+        }
+      }
+
+      // Tier 3: Try 'magiclink' token type
+      if (verifyResult.error) {
+        const magicResult = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanOtp,
+          type: 'magiclink',
+        });
+        if (!magicResult.error && magicResult.data?.user) {
+          verifyResult = magicResult;
+        }
+      }
+
+      // Tier 4: Server-side fallback verification
+      if (verifyResult.error) {
+        try {
+          const apiRes = await fetch('/api/auth/verify-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, otp: cleanOtp }),
+          });
+          const apiData = await apiRes.json();
+          if (apiRes.ok && apiData.success) {
+            verifyResult = { data: { user: apiData.user, session: apiData.session }, error: null };
+          }
+        } catch (_) {}
+      }
+
+      if (verifyResult.error || !verifyResult.data?.user) {
+        const msg = verifyResult.error?.message?.toLowerCase() || '';
         if (msg.includes('expired')) {
           setError('This verification code has expired. Please request a new code.');
         } else if (msg.includes('invalid') || msg.includes('token')) {
           setError('Incorrect verification code. Please check your email and try again.');
         } else {
-          setError(verifyErr.message || 'Verification failed. Please try again.');
+          setError(verifyResult.error?.message || 'Verification failed. Please try again.');
         }
         setOtpCode('');
         return;
       }
 
-      const user = data.user;
-      if (!user) {
-        throw new Error('Verification completed, but no user was returned.');
-      }
+      const verifiedUser = verifyResult.data.user;
 
       // Ensure profile row exists in Supabase profiles table
       try {
         const { data: existingProfile } = await supabase
           .from('profiles')
           .select('id, full_name, phone')
-          .eq('auth_user_id', user.id)
+          .eq('auth_user_id', verifiedUser.id)
           .maybeSingle();
 
         if (!existingProfile) {
           await supabase.from('profiles').insert({
-            auth_user_id: user.id,
+            auth_user_id: verifiedUser.id,
             full_name: cleanName,
             phone: cleanPhone,
             email: cleanEmail,
@@ -201,7 +237,7 @@ function SignupFormContent() {
         localStorage.setItem(
           'easyfarm_user',
           JSON.stringify({
-            id: user.id,
+            id: verifiedUser.id,
             email: cleanEmail,
             fullName: cleanName,
             phone: cleanPhone,
@@ -210,11 +246,19 @@ function SignupFormContent() {
         );
       }
 
+      setSuccessNotice('Account created successfully! Redirecting...');
+
       // Safe redirect
+      let targetUrl = '/baskets';
       if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
-        router.push(nextParam);
+        targetUrl = nextParam;
+      }
+
+      // Hard navigation ensures HTTP cookies are sent in request headers to SSR/middleware proxy
+      if (typeof window !== 'undefined') {
+        window.location.href = targetUrl;
       } else {
-        router.push('/baskets');
+        router.push(targetUrl);
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
@@ -392,6 +436,10 @@ function SignupFormContent() {
                     onChange={(val) => {
                       setOtpCode(val);
                       if (error) setError(null);
+                    }}
+                    onComplete={(code) => {
+                      setOtpCode(code);
+                      handleVerifySignupOtp(undefined, code);
                     }}
                     hasError={Boolean(error)}
                     disabled={verifying}

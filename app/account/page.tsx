@@ -184,15 +184,25 @@ export default function AccountPage() {
 
       // B. Authenticated User & Profile from Supabase
       const supabase = createClient();
-      const { data: authData, error: authError } = await supabase.auth.getUser();
+      let authUser = (await supabase.auth.getUser()).data?.user;
 
-      if (authError || !authData?.user) {
+      if (!authUser) {
+        // Double-check session in case fresh cookie is still initializing
+        const sessionUser = (await supabase.auth.getSession()).data?.session?.user;
+        if (sessionUser) {
+          authUser = sessionUser;
+        } else {
+          // Brief 250ms grace period for newly committed cookies
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          authUser = (await supabase.auth.getUser()).data?.user;
+        }
+      }
+
+      if (!authUser) {
         // Must be logged in to access account details
         router.push('/login?next=/account');
         return;
       }
-
-      const authUser = authData.user;
 
       // Query profiles table strictly for authUser.id
       const { data: profileRow } = await supabase
