@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 350" width="100%" height="100%">
+  <!-- Transparent Easy Farm Full Logo (Icon + Typography) -->
+  <g transform="translate(10, -30) scale(0.85)">
+    <!-- Sprout Leaves -->
+    <path d="M 234 212 C 205 185 192 142 216 118 C 248 118 274 152 268 190 C 258 205 244 213 234 212 Z" fill="#76D700" />
+    <path d="M 276 182 C 274 116 312 60 366 48 C 367 116 338 172 276 182 Z" fill="#76D700" />
+    <!-- Monogram eF -->
+    <path fill="#004323" d="M 206 172 C 160 172 108 198 84 235 L 75 250 C 65 268 65 292 75 310 L 162 368 C 178 379 200 379 216 368 L 260 338 C 240 310 220 280 196 250 C 164 250 134 262 104 278 L 104 246 C 120 230 152 216 190 216 L 246 290 L 180 336 L 126 298 L 148 284 C 168 274 192 274 212 284 L 272 372 C 285 390 306 400 328 400 L 328 320 C 314 320 302 312 295 300 L 396 300 C 408 300 416 290 416 278 C 416 266 408 256 396 256 L 295 256 C 304 230 330 214 360 214 L 424 214 C 440 214 452 202 452 186 C 452 170 440 158 424 158 L 340 158 C 286 158 240 188 206 172 Z" />
+  </g>
+
+  <!-- Professional Clean Text: Easy Farm -->
+  <text x="430" y="235" font-family="'Outfit', 'Inter', system-ui, -apple-system, sans-serif" font-weight="700" font-size="135" fill="#004323" letter-spacing="-2">Easy Farm</text>
+</svg>

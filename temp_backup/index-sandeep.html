@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Easy Farm — Fresh from Telangana Farms, Straight to Your Door</title>
+    <meta name="description" content="Freshly harvested seasonal vegetables, sourced directly from local Telangana farmers and delivered to your doorstep every Sunday. Order your weekly basket for just ₹250.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- MAIN CONTAINER -->
+<div class="site-container">
+
+    <!-- HEADER -->
+    <header class="header">
+        <nav class="nav">
+            <a href="#" class="logo">
+                <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="40" height="40" rx="12" fill="#2D6A4F" fill-opacity="0.1"/>
+                    <path d="M20 8C20 8 14 12 14 18C14 21.3 16.7 24 20 24C23.3 24 26 21.3 26 18C26 12 20 8 20 8Z" fill="#2D6A4F"/>
+                    <path d="M20 16V24" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M17 20H23" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M13 26L13.5 30C13.6 30.6 14.1 31 14.7 31H25.3C25.9 31 26.4 30.6 26.5 30L27 26H13Z" fill="#2D6A4F" fill-opacity="0.6"/>
+                </svg>
+                <span class="logo-text">Easy Farm</span>
+            </a>
+
+            <ul class="nav-links">
+                <li><a href="#home" class="active">Home</a></li>
+                <li><a href="#baskets">Our Baskets</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#transparency">Farmer Transparency</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+
+            <div class="nav-actions">
+                <button class="cart-btn" aria-label="Shopping cart">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <path d="M16 10a4 4 0 01-8 0"/>
+                    </svg>
+                    <span class="cart-badge">0</span>
+                </button>
+                <a href="#" class="btn btn-primary btn-sm">Login / Sign Up</a>
+            </div>
+
+            <button class="mobile-menu-btn" aria-label="Open menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </nav>
+
+        <!-- MOBILE NAV -->
+        <div class="mobile-nav">
+            <ul>
+                <li><a href="#home">Home</a></li>
+                <li><a href="#baskets">Our Baskets</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#transparency">Farmer Transparency</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+            <a href="#" class="btn btn-primary" style="width:100%;text-align:center;margin-top:1rem;">Login / Sign Up</a>
+        </div>
+    </header>
+
+    <!-- HERO SECTION -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <div class="hero-text">
+                <span class="pill">
+                    <span class="pill-emoji">🌿</span>
+                    Farm Fresh • Telangana
+                </span>
+
+                <h1 class="hero-headline">
+                    <span class="text-green">Fresh</span> from Telangana Farms, Straight to <span class="text-green">Your Door.</span>
+                </h1>
+
+                <p class="hero-subtitle">
+                    Freshly harvested seasonal vegetables, sourced directly from local farmers and delivered to your doorstep every Sunday.
+                </p>
+
+                <div class="hero-ctas">
+                    <a href="#baskets" class="btn btn-primary btn-lg">
+                        Order Weekly Basket — ₹250
+                    </a>
+                    <a href="#baskets" class="btn-text">
+                        Explore Our Baskets
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </a>
+                </div>
+
+                <div class="trust-indicators">
+                    <span class="trust-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Direct from farmers
+                    </span>
+                    <span class="trust-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Harvested fresh
+                    </span>
+                    <span class="trust-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Sunday delivery
+                    </span>
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <div class="hero-image-wrapper">
+                    <div class="hero-glow"></div>
+                    <img src="hero-vegetables.png" alt="Fresh farm vegetables — tomatoes, spinach, brinjals, cucumbers, green chilies and coriander on a rustic wooden board" class="hero-img" />
+
+                    <!-- FLOATING CARDS -->
+                    <div class="float-card float-card-1">
+                        <div class="float-card-icon">🌱</div>
+                        <div class="float-card-content">
+                            <strong>Farm Fresh</strong>
+                            <span>Harvested Saturday</span>
+                        </div>
+                    </div>
+
+                    <div class="float-card float-card-2">
+                        <div class="float-card-icon">🚚</div>
+                        <div class="float-card-content">
+                            <strong>Sunday Delivery</strong>
+                            <span>Delivered by 6 PM</span>
+                        </div>
+                    </div>
+
+                    <div class="float-card float-card-3">
+                        <div class="float-card-icon">🧺</div>
+                        <div class="float-card-content">
+                            <strong>₹250</strong>
+                            <span>Weekly Basket</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section how-it-works" id="how-it-works">
+        <div class="section-header">
+            <span class="section-label">HOW IT WORKS</span>
+            <h2>From Farm to Door in <span class="text-green">3 Simple Steps.</span></h2>
+        </div>
+
+        <div class="steps-grid">
+            <div class="step-card">
+                <div class="step-number">01</div>
+                <div class="step-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
+                    </svg>
+                </div>
+                <h3>Order by Thursday</h3>
+                <p>Choose your weekly basket and place your order before Thursday evening.</p>
+            </div>
+
+            <div class="step-connector">
+                <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="#2D6A4F" stroke-width="2" stroke-dasharray="6 4"/></svg>
+            </div>
+
+            <div class="step-card">
+                <div class="step-number">02</div>
+                <div class="step-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M9 12l2 2 4-4"/>
+                    </svg>
+                </div>
+                <h3>Harvested Saturday</h3>
+                <p>Farmers harvest your vegetables fresh on Saturday according to orders.</p>
+            </div>
+
+            <div class="step-connector">
+                <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="#2D6A4F" stroke-width="2" stroke-dasharray="6 4"/></svg>
+            </div>
+
+            <div class="step-card">
+                <div class="step-number">03</div>
+                <div class="step-icon">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2D6A4F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="1" y="3" width="15" height="13" rx="2" ry="2"/>
+                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                        <circle cx="5.5" cy="18.5" r="2.5"/>
+                        <circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                </div>
+                <h3>Delivered Sunday</h3>
+                <p>Your basket arrives at your doorstep, fresh and packed, by 6 PM Sunday.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- WEEKLY BASKETS -->
+    <section class="section baskets-section" id="baskets">
+        <div class="section-header">
+            <span class="section-label">OUR BASKETS</span>
+            <h2>Pick Your <span class="text-green">Perfect Basket.</span></h2>
+        </div>
+
+        <div class="baskets-grid">
+            <!-- Staple Box — Featured -->
+            <div class="basket-card basket-featured">
+                <div class="basket-badge">Most Popular</div>
+                <div class="basket-image">
+                    <img src="https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600&h=400&fit=crop" alt="Staple Box — everyday vegetables" loading="lazy"/>
+                </div>
+                <div class="basket-info">
+                    <h3>Staple Box</h3>
+                    <div class="basket-price">₹250 <span>/ week</span></div>
+                    <p>Everyday vegetables for your weekly cooking — tomatoes, onions, potatoes, greens and more.</p>
+                    <ul class="basket-features">
+                        <li>6–8 varieties</li>
+                        <li>Serves 2–3 people</li>
+                        <li>~3 kg net weight</li>
+                    </ul>
+                    <a href="#" class="btn btn-primary">Order Staple Box</a>
+                </div>
+            </div>
+
+            <!-- Green Box -->
+            <div class="basket-card">
+                <div class="basket-image">
+                    <img src="https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=600&h=400&fit=crop" alt="Green Box — seasonal vegetables" loading="lazy"/>
+                </div>
+                <div class="basket-info">
+                    <h3>Green Box</h3>
+                    <div class="basket-price">₹350 <span>/ week</span></div>
+                    <p>A larger selection of fresh seasonal vegetables for families that love variety.</p>
+                    <ul class="basket-features">
+                        <li>10–12 varieties</li>
+                        <li>Serves 3–4 people</li>
+                        <li>~5 kg net weight</li>
+                    </ul>
+                    <a href="#" class="btn btn-outline">Order Green Box</a>
+                </div>
+            </div>
+
+            <!-- Premium Box -->
+            <div class="basket-card">
+                <div class="basket-image">
+                    <img src="https://images.unsplash.com/photo-1590779033100-9f60a05a013d?w=600&h=400&fit=crop" alt="Premium Box — premium produce" loading="lazy"/>
+                </div>
+                <div class="basket-info">
+                    <h3>Premium Box</h3>
+                    <div class="basket-price">₹500 <span>/ week</span></div>
+                    <p>Our biggest selection of premium seasonal produce, including exotic greens and herbs.</p>
+                    <ul class="basket-features">
+                        <li>14–16 varieties</li>
+                        <li>Serves 4–6 people</li>
+                        <li>~8 kg net weight</li>
+                    </ul>
+                    <a href="#" class="btn btn-outline">Order Premium Box</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FARMER TRANSPARENCY -->
+    <section class="section transparency-section" id="transparency">
+        <div class="transparency-grid">
+            <div class="transparency-image">
+                <img src="https://images.unsplash.com/photo-1595855759920-86582396756a?w=800&h=900&fit=crop" alt="Telangana farmer in a green vegetable field" loading="lazy"/>
+            </div>
+
+            <div class="transparency-content">
+                <span class="section-label">FARMER FIRST</span>
+                <h2>Know Where Your Food <span class="text-green">Comes From.</span></h2>
+
+                <div class="highlight-stat">
+                    <span class="stat-number">15%</span>
+                    <span class="stat-label">Above Mandi price paid to farmers</span>
+                </div>
+
+                <p>Every Easy Farm basket is connected to the farmer who supplied it. We believe in radical transparency — you can see exactly who grew your food and what they were paid.</p>
+                <p>Scan the QR code on your box to verify the exact UPI payment made to the farmer.</p>
+
+                <div class="qr-verification">
+                    <div class="qr-code">
+                        <svg viewBox="0 0 100 100" width="80" height="80">
+                            <rect width="100" height="100" fill="#f8f9fa" rx="8"/>
+                            <rect x="10" y="10" width="25" height="25" fill="#2D6A4F" rx="3"/>
+                            <rect x="65" y="10" width="25" height="25" fill="#2D6A4F" rx="3"/>
+                            <rect x="10" y="65" width="25" height="25" fill="#2D6A4F" rx="3"/>
+                            <rect x="15" y="15" width="15" height="15" fill="#f8f9fa" rx="2"/>
+                            <rect x="70" y="15" width="15" height="15" fill="#f8f9fa" rx="2"/>
+                            <rect x="15" y="70" width="15" height="15" fill="#f8f9fa" rx="2"/>
+                            <rect x="19" y="19" width="7" height="7" fill="#2D6A4F" rx="1"/>
+                            <rect x="74" y="19" width="7" height="7" fill="#2D6A4F" rx="1"/>
+                            <rect x="19" y="74" width="7" height="7" fill="#2D6A4F" rx="1"/>
+                            <rect x="42" y="10" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="50" y="10" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="42" y="20" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="42" y="30" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="50" y="30" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="10" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="20" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="30" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="42" y="42" width="16" height="16" fill="#2D6A4F" rx="2"/>
+                            <rect x="46" y="46" width="8" height="8" fill="#f8f9fa" rx="1"/>
+                            <rect x="65" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="75" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="85" y="42" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="10" y="52" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="30" y="52" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="65" y="55" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="75" y="55" width="5" height="5" fill="#2D6A4F"/>
+                            <rect x="65" y="65" width="25" height="25" fill="none" stroke="#2D6A4F" stroke-width="3" rx="3"/>
+                            <rect x="72" y="72" width="11" height="11" fill="#2D6A4F" rx="2"/>
+                            <rect x="85" y="55" width="5" height="5" fill="#2D6A4F"/>
+                        </svg>
+                    </div>
+                    <div class="qr-text">
+                        <strong>Scan to Verify Payment</strong>
+                        <span>Every box includes a unique QR code</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- TESTIMONIALS -->
+    <section class="section testimonials-section" id="testimonials">
+        <div class="section-header">
+            <span class="section-label">TESTIMONIALS</span>
+            <h2>Freshness You Can <span class="text-green">Taste.</span></h2>
+        </div>
+
+        <div class="testimonials-grid">
+            <div class="testimonial-card">
+                <div class="testimonial-stars">★★★★★</div>
+                <p>"The tomatoes actually taste like tomatoes. I forgot what real vegetables tasted like after years of supermarket shopping."</p>
+                <div class="testimonial-author">
+                    <div class="author-avatar">PS</div>
+                    <div>
+                        <strong>Priya Sharma</strong>
+                        <span>Resident, Singapore Township, Ghatkesar</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="testimonial-card">
+                <div class="testimonial-stars">★★★★★</div>
+                <p>"Sunday mornings are special now. The kids help unpack the basket and we plan the week's meals together. Love the freshness!"</p>
+                <div class="testimonial-author">
+                    <div class="author-avatar">RK</div>
+                    <div>
+                        <strong>Ravi Kumar</strong>
+                        <span>Product Manager, Kondapur</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="testimonial-card">
+                <div class="testimonial-stars">★★★★★</div>
+                <p>"I love knowing the farmer who grew my food. The transparency is incredible — I've even visited one of the farms!"</p>
+                <div class="testimonial-author">
+                    <div class="author-avatar">AN</div>
+                    <div>
+                        <strong>Ananya Nair</strong>
+                        <span>Designer, Madhapur</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="final-cta" id="contact">
+        <div class="cta-content">
+            <h2>Make Your Sunday <span style="color:#fff;opacity:0.9">Fresh.</span></h2>
+            <p>Fresh vegetables. Fair prices. Better for farmers.</p>
+            <a href="#baskets" class="btn btn-white btn-lg">
+                Order Your Weekly Basket — ₹250
+            </a>
+            <span class="cta-note">Orders close every Thursday.</span>
+        </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="40" height="40" rx="12" fill="#2D6A4F" fill-opacity="0.1"/>
+                        <path d="M20 8C20 8 14 12 14 18C14 21.3 16.7 24 20 24C23.3 24 26 21.3 26 18C26 12 20 8 20 8Z" fill="#2D6A4F"/>
+                        <path d="M20 16V24" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M17 20H23" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M13 26L13.5 30C13.6 30.6 14.1 31 14.7 31H25.3C25.9 31 26.4 30.6 26.5 30L27 26H13Z" fill="#2D6A4F" fill-opacity="0.6"/>
+                    </svg>
+                    <span class="logo-text">Easy Farm</span>
+                </a>
+                <p>Building a fair food system for Telangana.</p>
+            </div>
+
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h4>Navigate</h4>
+                    <ul>
+                        <li><a href="#home">Home</a></li>
+                        <li><a href="#baskets">Our Baskets</a></li>
+                        <li><a href="#how-it-works">How It Works</a></li>
+                        <li><a href="#transparency">Farmer Transparency</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Support</h4>
+                    <ul>
+                        <li><a href="#">FAQ</a></li>
+                        <li><a href="#">Contact Us</a></li>
+                        <li><a href="#">WhatsApp</a></li>
+                        <li><a href="#">Delivery Areas</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Follow Us</h4>
+                    <ul>
+                        <li><a href="#">Instagram</a></li>
+                        <li><a href="#">Twitter</a></li>
+                        <li><a href="#">Facebook</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <p>© 2026 Easy Farm. All rights reserved. Made with 🌿 in Telangana.</p>
+        </div>
+    </footer>
+
+</div><!-- .site-container -->
+
+<!-- MOBILE STICKY CTA -->
+<div class="mobile-sticky-cta">
+    <a href="#baskets" class="btn btn-primary btn-lg">
+        Order ₹250 Basket
+    </a>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
