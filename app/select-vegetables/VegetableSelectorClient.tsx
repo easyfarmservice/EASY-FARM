@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Product, Basket } from '@/types/database';
 import { useCart } from '@/components/cart/CartProvider';
+import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 interface SelectedItem {
   product: Product;
@@ -323,9 +324,10 @@ export function VegetableSelectorClient({ products, customBasket }: VegetableSel
                       {/* PRODUCT IMAGE */}
                       <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-slate-50 mb-3 border border-slate-100">
                         <Image
-                          src={p.image_url || '/images/hero-vegetables.png'}
+                          src={getVegetableImageUrl(p.image_url, p.slug || p.name)}
                           alt={p.name}
                           fill
+                          unoptimized
                           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                           className="object-cover"
                         />
@@ -432,9 +434,10 @@ export function VegetableSelectorClient({ products, customBasket }: VegetableSel
                       <div className="flex items-center gap-2.5 truncate flex-1 min-w-0 pr-2">
                         <div className="relative w-9 h-9 rounded-xl overflow-hidden bg-white shrink-0 border border-slate-200">
                           <Image
-                            src={product.image_url || '/images/hero-vegetables.png'}
+                            src={getVegetableImageUrl(product.image_url, product.slug || product.name)}
                             alt={product.name}
                             fill
+                            unoptimized
                             className="object-cover"
                           />
                         </div>

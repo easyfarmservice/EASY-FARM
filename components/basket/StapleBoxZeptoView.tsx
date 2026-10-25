@@ -343,6 +343,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                   src="/images/staple-box-banner.jpg"
                   alt="Fresh Easy Farm Harvest Wicker Basket"
                   fill
+                  unoptimized
                   sizes="320px"
                   priority
                   className="object-cover"
@@ -406,6 +407,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                       src={getVegetableImageUrl(item.image_url, item.slug || item.name)}
                       alt={item.name}
                       fill
+                      unoptimized
                       sizes="(max-width: 640px) 64px, 80px"
                       className="object-cover"
                     />
@@ -580,6 +582,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                                 src={getVegetableImageUrl(alt.image_url, alt.slug || alt.name)}
                                 alt={alt.name}
                                 fill
+                                unoptimized
                                 className="object-cover"
                               />
                             </div>

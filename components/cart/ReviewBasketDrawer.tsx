@@ -91,9 +91,16 @@ export function ReviewBasketDrawer({ isOpen, onClose }: ReviewBasketDrawerProps)
                       <div className="flex items-center gap-3">
                         <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 shrink-0">
                           <Image
-                            src={b.image_url || '/images/hero-vegetables.png'}
+                            src={
+                              b.image_url && !b.image_url.includes('hero-vegetables')
+                                ? b.image_url
+                                : b.slug?.includes('custom') || b.id.endsWith('4')
+                                ? '/images/custom-box-veggies.jpg'
+                                : '/images/staple-box-banner.jpg'
+                            }
                             alt={b.name}
                             fill
+                            unoptimized
                             className="object-cover"
                           />
                         </div>
@@ -154,6 +161,7 @@ export function ReviewBasketDrawer({ isOpen, onClose }: ReviewBasketDrawerProps)
                                     src={getVegetableImageUrl(it.image_url, it.productName)}
                                     alt={it.productName}
                                     fill
+                                    unoptimized
                                     className="object-cover"
                                   />
                                 </div>

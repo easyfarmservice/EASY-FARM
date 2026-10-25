@@ -200,6 +200,7 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
                   src="/images/custom-box-banner.jpg"
                   alt="Fresh Easy Farm Harvest Wooden Crate"
                   fill
+                  unoptimized
                   sizes="320px"
                   priority
                   className="object-cover"
@@ -294,6 +295,7 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
                         src={getVegetableImageUrl(p.image_url, p.slug || p.name)}
                         alt={p.name}
                         fill
+                        unoptimized
                         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                         className="object-cover group-hover:scale-105 transition-transform duration-300"
                       />

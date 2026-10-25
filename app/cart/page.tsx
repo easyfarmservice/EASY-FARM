@@ -117,9 +117,16 @@ export default function CartPage() {
                       <div className="flex items-center gap-4">
                         <div className="relative w-20 h-20 rounded-2xl overflow-hidden bg-emerald-50 shrink-0 border border-slate-100">
                           <Image
-                            src={basket.image_url || '/images/hero-vegetables.png'}
+                            src={
+                              basket.image_url && !basket.image_url.includes('hero-vegetables')
+                                ? basket.image_url
+                                : basket.slug?.includes('custom') || basket.id.endsWith('4')
+                                ? '/images/custom-box-veggies.jpg'
+                                : '/images/staple-box-banner.jpg'
+                            }
                             alt={basket.name}
                             fill
+                            unoptimized
                             className="object-cover"
                           />
                         </div>
@@ -195,6 +202,7 @@ export default function CartPage() {
                                       src={getVegetableImageUrl(cItem.image_url, cItem.productName)}
                                       alt={cItem.productName}
                                       fill
+                                      unoptimized
                                       className="object-cover"
                                     />
                                   </div>
