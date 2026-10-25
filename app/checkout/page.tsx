@@ -145,7 +145,8 @@ export default function CheckoutPage() {
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!couponCode.trim()) return;
+    const cleanCode = couponCode.trim().toUpperCase();
+    if (!cleanCode) return;
 
     setCouponLoading(true);
     setCouponError(null);
@@ -155,11 +156,16 @@ export default function CheckoutPage() {
       const res = await fetch('/api/coupons/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: couponCode, subtotal: serverTotal?.subtotal ?? subtotal, customerEmail: currentUser?.email }),
+        body: JSON.stringify({
+          code: cleanCode,
+          subtotal: serverTotal?.subtotal ?? subtotal,
+          customerEmail: currentUser?.email && currentUser.email.includes('@') ? currentUser.email : undefined,
+        }),
       });
       const data = await res.json();
       if (data.valid) {
         setAppliedCouponCode(data.code);
+        setCouponCode(data.code);
         setCouponError(null);
         // Recalculate server total with the coupon
         await recalculateTotal(data.code);
@@ -923,6 +929,18 @@ export default function CheckoutPage() {
                   <p>{activeAddress.flatNo}, {activeAddress.apartment}, {activeAddress.locality || 'Ghatkesar'}, PIN {activeAddress.pincode || '500088'}</p>
                 </div>
 
+                {serverTotal && !serverTotal.valid && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-bold space-y-1">
+                    <p className="flex items-center gap-1.5">
+                      <span>⚠️</span>
+                      <span>{serverTotal.message || 'Cannot place order. Please check your cart.'}</span>
+                    </p>
+                    <p className="text-[11px] font-normal text-amber-700">
+                      💡 Tip: Use coupon code <strong className="font-mono font-bold text-amber-900">TEST1</strong> to pay ₹1 for testing!
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -934,8 +952,8 @@ export default function CheckoutPage() {
                   <button
                     type="button"
                     onClick={handlePlaceOrder}
-                    disabled={loading || pricingLoading || !serverTotal?.valid}
-                    className="w-2/3 py-3.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-black text-base transition shadow-lg min-h-[48px] disabled:opacity-60"
+                    disabled={loading || pricingLoading || (serverTotal ? !serverTotal.valid : false)}
+                    className="w-2/3 py-3.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-black text-base transition shadow-lg min-h-[48px] disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {loading ? 'Processing...' : pricingLoading ? 'Calculating...' : `Pay ₹${displayTotal.toFixed(2)} & Place Order`}
                   </button>

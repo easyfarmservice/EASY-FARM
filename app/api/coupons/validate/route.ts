@@ -5,44 +5,72 @@ import { z } from 'zod';
 
 const CouponPayloadSchema = z.object({
   code: z.string().min(1, 'Please enter a coupon code').max(50),
-  subtotal: z.number().nonnegative('Subtotal must be non-negative'),
-  customerEmail: z.string().email().optional(),
+  subtotal: z.number().nonnegative('Subtotal must be non-negative').optional().default(0),
+  customerEmail: z.string().optional().nullable().transform((val) => (val && val.includes('@') ? val.trim() : undefined)),
 });
 
-const HARDCODED_COUPONS: Record<string, { code: string; type: 'flat' | 'percent'; value: number; minOrder: number; description: string }> = {
+const HARDCODED_COUPONS: Record<string, { code: string; type: 'flat' | 'percent' | 'one_rupee'; value: number; minOrder: number; description: string }> = {
+  TEST1: {
+    code: 'TEST1',
+    type: 'one_rupee',
+    value: 1,
+    minOrder: 0,
+    description: '🎉 Live Testing Coupon: Order total set to ₹1.00',
+  },
+  EASY1: {
+    code: 'EASY1',
+    type: 'one_rupee',
+    value: 1,
+    minOrder: 0,
+    description: '🎉 Live Testing Coupon: Order total set to ₹1.00',
+  },
+  RUPEE1: {
+    code: 'RUPEE1',
+    type: 'one_rupee',
+    value: 1,
+    minOrder: 0,
+    description: '🎉 Live Testing Coupon: Order total set to ₹1.00',
+  },
+  ONE: {
+    code: 'ONE',
+    type: 'one_rupee',
+    value: 1,
+    minOrder: 0,
+    description: '🎉 Live Testing Coupon: Order total set to ₹1.00',
+  },
   EASY50: {
     code: 'EASY50',
     type: 'flat',
     value: 50,
-    minOrder: 250,
-    description: 'Flat ₹50 off on orders above ₹250',
+    minOrder: 100,
+    description: 'Flat ₹50 off on orders above ₹100',
   },
   FIRSTFARM: {
     code: 'FIRSTFARM',
     type: 'percent',
     value: 10,
-    minOrder: 250,
+    minOrder: 100,
     description: '10% off on your first Easy Farm weekly basket',
   },
   GHATKESAR100: {
     code: 'GHATKESAR100',
     type: 'flat',
     value: 100,
-    minOrder: 500,
-    description: 'Flat ₹100 off on Premium Box or orders above ₹500',
+    minOrder: 250,
+    description: 'Flat ₹100 off on Premium Box or orders above ₹250',
   },
   GACHIBOWLI100: {
     code: 'GHATKESAR100',
     type: 'flat',
     value: 100,
-    minOrder: 500,
-    description: 'Flat ₹100 off on Premium Box or orders above ₹500',
+    minOrder: 250,
+    description: 'Flat ₹100 off on Premium Box or orders above ₹250',
   },
   WELCOME20: {
     code: 'WELCOME20',
     type: 'percent',
     value: 20,
-    minOrder: 350,
+    minOrder: 150,
     description: '20% welcome discount for Ghatkesar & Pocharam residents',
   },
 };
@@ -157,7 +185,9 @@ export async function POST(req: NextRequest) {
     }
 
     let discount = 0;
-    if (matched.type === 'flat') {
+    if (matched.type === 'one_rupee') {
+      discount = Math.max(0, orderSubtotal - 1);
+    } else if (matched.type === 'flat') {
       discount = matched.value;
     } else {
       discount = Math.round((orderSubtotal * matched.value) / 100);

@@ -47,7 +47,7 @@ export class PricingService {
     const defaults = {
       baseDeliveryFee: 40,
       freeDeliveryThreshold: 499,
-      minimumOrderValue: 250,
+      minimumOrderValue: 100,
       allowCouponStacking: false,
       orderCutoffDay: 'Saturday',
       orderCutoffTime: '23:00',
@@ -120,13 +120,18 @@ export class PricingService {
     }
 
     // Default fallback baskets if DB query returns empty during initial setup
-    const fallbackMap: Record<string, { name: string; price: number; compareAt?: number }> = {
-      'b-01': { name: 'Staple Basket', price: 185, compareAt: 240 },
-      'staple-box': { name: 'Staple Basket', price: 185, compareAt: 240 },
-      'b-02': { name: 'Green Basket', price: 195, compareAt: 250 },
-      'green-box': { name: 'Green Basket', price: 195, compareAt: 250 },
-      'b-03': { name: 'Special Basket', price: 260, compareAt: 335 },
-      'premium-box': { name: 'Special Basket', price: 260, compareAt: 335 },
+    const fallbackMap: Record<string, { id: string; name: string; price: number; compareAt?: number }> = {
+      '33333333-0000-0000-0000-000000000001': { id: '33333333-0000-0000-0000-000000000001', name: 'Staple Box', price: 185, compareAt: 240 },
+      'staple-basket': { id: '33333333-0000-0000-0000-000000000001', name: 'Staple Box', price: 185, compareAt: 240 },
+      'staple-box': { id: '33333333-0000-0000-0000-000000000001', name: 'Staple Box', price: 185, compareAt: 240 },
+      'b-01': { id: '33333333-0000-0000-0000-000000000001', name: 'Staple Box', price: 185, compareAt: 240 },
+      '33333333-0000-0000-0000-000000000004': { id: '33333333-0000-0000-0000-000000000004', name: 'Custom Box', price: 450, compareAt: 580 },
+      'custom-basket': { id: '33333333-0000-0000-0000-000000000004', name: 'Custom Box', price: 450, compareAt: 580 },
+      'custom-box': { id: '33333333-0000-0000-0000-000000000004', name: 'Custom Box', price: 450, compareAt: 580 },
+      'b-02': { id: 'b-02', name: 'Green Basket', price: 195, compareAt: 250 },
+      'green-box': { id: 'b-02', name: 'Green Basket', price: 195, compareAt: 250 },
+      'b-03': { id: 'b-03', name: 'Special Basket', price: 260, compareAt: 335 },
+      'premium-box': { id: 'b-03', name: 'Special Basket', price: 260, compareAt: 335 },
     };
 
     let subtotal = 0;
@@ -134,20 +139,36 @@ export class PricingService {
     const itemsBreakdown: CalculationResult['itemsBreakdown'] = [];
 
     for (const item of items) {
-      const dbBasket = basketsMap.get(item.basketId);
-      if (!dbBasket) {
-        return {
-          valid: false,
-          message: `The selected basket "${item.basketId}" is unavailable or does not exist.`,
-          itemsBreakdown: [],
-          subtotal: 0,
-          savingsFromCompareAt: 0,
-          couponDiscount: 0,
-          deliveryFee: settings.baseDeliveryFee,
-          freeDeliveryThreshold: settings.freeDeliveryThreshold,
-          isFreeDelivery: false,
-          totalPayable: 0,
-        };
+      let dbBasket = basketsMap.get(item.basketId);
+      if (!dbBasket && fallbackMap[item.basketId]) {
+        const fb = fallbackMap[item.basketId];
+        dbBasket = {
+          id: fb.id,
+          name: fb.name,
+          slug: item.basketId,
+          description: '',
+          price: fb.price,
+          compare_at_price: fb.compareAt,
+          active: true,
+          sort_order: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Basket;
+      } else if (!dbBasket) {
+        // Fallback for any client-customized basket item
+        const fallbackPrice = typeof item.customPrice === 'number' && item.customPrice > 0 ? item.customPrice : 185;
+        dbBasket = {
+          id: item.basketId,
+          name: 'Fresh Farm Basket',
+          slug: item.basketId,
+          description: '',
+          price: fallbackPrice,
+          compare_at_price: item.compareAtPrice,
+          active: true,
+          sort_order: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Basket;
       }
 
       if (dbBasket.active === false) {
@@ -193,8 +214,15 @@ export class PricingService {
       });
     }
 
-    // Enforce minimum order value
-    if (subtotal < settings.minimumOrderValue) {
+    const cleanCouponCode = couponCode?.trim()?.toUpperCase();
+    const isOneRupeeTestCoupon =
+      cleanCouponCode === 'TEST1' ||
+      cleanCouponCode === 'EASY1' ||
+      cleanCouponCode === 'RUPEE1' ||
+      cleanCouponCode === 'ONE';
+
+    // Enforce minimum order value (bypassed for ₹1 testing coupons)
+    if (!isOneRupeeTestCoupon && subtotal < settings.minimumOrderValue) {
       return {
         valid: false,
         message: `Minimum order value is ₹${settings.minimumOrderValue}. Current order subtotal is ₹${subtotal}`,
@@ -213,14 +241,30 @@ export class PricingService {
     let couponDiscount = 0;
     let validatedCouponCode: string | undefined = undefined;
 
-    if (couponCode && couponCode.trim()) {
-      const cleanCode = couponCode.trim().toUpperCase();
+    if (isOneRupeeTestCoupon) {
+      // Set order payable directly to ₹1.00 for live Razorpay testing
+      couponDiscount = Math.max(0, subtotal - 1);
+      validatedCouponCode = cleanCouponCode;
+      return {
+        valid: true,
+        itemsBreakdown,
+        subtotal,
+        savingsFromCompareAt,
+        couponCode: validatedCouponCode,
+        couponDiscount,
+        deliveryFee: 0,
+        freeDeliveryThreshold: settings.freeDeliveryThreshold,
+        isFreeDelivery: true,
+        totalPayable: 1,
+      };
+    }
 
+    if (cleanCouponCode) {
       // Check DB Coupons
       const { data: dbCoupon } = await supabase
         .from('coupons')
         .select('*')
-        .eq('code', cleanCode)
+        .eq('code', cleanCouponCode)
         .eq('active', true)
         .maybeSingle();
 
@@ -259,18 +303,18 @@ export class PricingService {
       } else {
         // Built-in launch coupons fallback
         const hardcodedCoupons: Record<string, { value: number; type: 'flat' | 'percent'; minOrder: number }> = {
-          EASY50: { value: 50, type: 'flat', minOrder: 250 },
-          FIRSTFARM: { value: 10, type: 'percent', minOrder: 250 },
-          GHATKESAR100: { value: 100, type: 'flat', minOrder: 500 },
-          GACHIBOWLI100: { value: 100, type: 'flat', minOrder: 500 },
-          WELCOME20: { value: 20, type: 'percent', minOrder: 350 },
+          EASY50: { value: 50, type: 'flat', minOrder: 100 },
+          FIRSTFARM: { value: 10, type: 'percent', minOrder: 100 },
+          GHATKESAR100: { value: 100, type: 'flat', minOrder: 250 },
+          GACHIBOWLI100: { value: 100, type: 'flat', minOrder: 250 },
+          WELCOME20: { value: 20, type: 'percent', minOrder: 150 },
         };
 
-        const hc = hardcodedCoupons[cleanCode];
+        const hc = hardcodedCoupons[cleanCouponCode];
         if (hc && subtotal >= hc.minOrder) {
           couponDiscount = hc.type === 'flat' ? hc.value : Math.round((subtotal * hc.value) / 100);
           couponDiscount = Math.min(couponDiscount, subtotal);
-          validatedCouponCode = cleanCode;
+          validatedCouponCode = cleanCouponCode;
         }
       }
     }
