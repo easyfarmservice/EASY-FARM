@@ -51,6 +51,14 @@ interface DeliveryOrder {
   failure_reason?: string;
   rescheduled_date?: string;
   basket_summary: string;
+  claimed_reward?: {
+    id: string;
+    name: string;
+    brand?: string;
+    package_size?: string;
+    coin_cost: number;
+    image_url?: string;
+  } | null;
 }
 
 interface DeliveryStats {

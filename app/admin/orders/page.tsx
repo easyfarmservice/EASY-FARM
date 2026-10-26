@@ -16,6 +16,7 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  Gift,
 } from 'lucide-react';
 
 interface OrderItem {
@@ -45,6 +46,14 @@ interface AdminOrder {
   locality?: string;
   pincode?: string;
   coupon_code?: string | null;
+  claimed_reward?: {
+    id: string;
+    name: string;
+    brand?: string;
+    package_size?: string;
+    coin_cost: number;
+    image_url?: string;
+  } | null;
   items: OrderItem[];
   created_at: string;
 }
@@ -292,6 +301,12 @@ export default function AdminOrdersPage() {
                             <p className="text-[10px] text-slate-400 truncate max-w-[130px]">
                               {o.items[0]?.name || 'Basket'}
                             </p>
+                            {o.claimed_reward && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-900 bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 rounded-md mt-0.5 truncate max-w-[130px]" title={o.claimed_reward.name}>
+                                <Gift className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                                <span>{o.claimed_reward.name}</span>
+                              </span>
+                            )}
                           </td>
 
                           {/* Payment */}
@@ -400,6 +415,25 @@ export default function AdminOrdersPage() {
                                     ))}
                                   </div>
                                 </div>
+
+                                {o.claimed_reward && (
+                                  <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl border border-amber-200 space-y-1.5">
+                                    <p className="font-bold text-amber-950 flex items-center gap-1.5 text-[11px] uppercase tracking-wider">
+                                      <Gift className="w-3.5 h-3.5 text-amber-700" />
+                                      Loyalty Reward (Free Essential)
+                                    </p>
+                                    <p className="font-extrabold text-slate-900 text-xs">{o.claimed_reward.name}</p>
+                                    <p className="text-[10px] text-slate-600">
+                                      {o.claimed_reward.package_size || '1 Unit'} • {o.claimed_reward.brand || 'Easy Farm'}
+                                    </p>
+                                    <div className="pt-1.5 border-t border-amber-200/80 flex items-center justify-between text-[10px]">
+                                      <span className="font-bold text-amber-900">🪙 {o.claimed_reward.coin_cost} Coins Redeemed</span>
+                                      <span className="font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                        Pack in Basket
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>

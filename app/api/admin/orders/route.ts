@@ -103,6 +103,7 @@ export async function GET(req: NextRequest) {
         locality: meta?.locality || o.customer_addresses?.locality || 'Ghatkesar',
         pincode: meta?.pincode || o.customer_addresses?.pincode || '500088',
         coupon_code: meta?.couponCode || null,
+        claimed_reward: meta?.claimedReward || null,
         items,
         created_at: o.created_at,
       };

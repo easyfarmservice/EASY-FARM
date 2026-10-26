@@ -99,6 +99,12 @@ export async function GET(req: NextRequest) {
         .map((i: any) => `${i.basket_name} (${i.quantity})`)
         .join(', ') || (meta?.items ? meta.items.map((i: any) => `${i.name || i.basketName} (${i.quantity})`).join(', ') : 'Weekly Harvest Basket');
 
+      const claimedReward = meta?.claimedReward || null;
+      let finalBasketSummary = basketSummary;
+      if (claimedReward) {
+        finalBasketSummary += ` + 🎁 Reward: ${claimedReward.name} (${claimedReward.package_size || '1 Unit'})`;
+      }
+
       return {
         id: meta?.orderNumber ? meta.orderNumber.replace('ORD-', 'EF') : `EF${o.id.slice(0, 4).toUpperCase()}`,
         raw_id: o.id,
@@ -123,7 +129,8 @@ export async function GET(req: NextRequest) {
         delivered_at: o.delivered_at,
         failure_reason: o.failure_reason,
         rescheduled_date: o.rescheduled_date,
-        basket_summary: basketSummary,
+        basket_summary: finalBasketSummary,
+        claimed_reward: claimedReward,
       };
     });
 

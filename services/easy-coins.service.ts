@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   EasyCoinsSettings,
@@ -6,7 +8,7 @@ import {
   EasyCoinsLedgerEntry,
   RewardClaim,
   CustomerCoinsOverview,
-  ClaimFulfillmentStatus
+  ClaimFulfillmentStatus,
 } from '@/types/easy-coins';
 
 // Default system settings
@@ -22,110 +24,362 @@ const DEFAULT_SETTINGS: EasyCoinsSettings = {
   allow_promotions: true,
 };
 
-// High-fidelity fallback catalog of genuine essentials
-const INITIAL_CATEGORIES: RewardCategory[] = [
-  { id: 'cat-1', name: 'Oral Care', slug: 'oral-care', description: 'Toothpastes, brushes and dental care', icon: 'Sparkles', sort_order: 1, is_active: true },
-  { id: 'cat-2', name: 'Bath & Personal Care', slug: 'bath-personal-care', description: 'Soaps, shampoos and hair care', icon: 'Smile', sort_order: 2, is_active: true },
-  { id: 'cat-3', name: 'Household Cleaning', slug: 'household-cleaning', description: 'Dishwash bars, detergents and scrubbers', icon: 'Shield', sort_order: 3, is_active: true },
-  { id: 'cat-4', name: 'Kitchen Essentials', slug: 'kitchen-essentials', description: 'Food bags, wipes and reusable bags', icon: 'Package', sort_order: 4, is_active: true },
-  { id: 'cat-5', name: 'Daily Personal Essentials', slug: 'daily-personal-essentials', description: 'Combs, tissues and hygiene products', icon: 'Heart', sort_order: 5, is_active: true },
-  { id: 'cat-6', name: 'Everyday Utility', slug: 'everyday-utility', description: 'Stationery, pens and batteries', icon: 'Compass', sort_order: 6, is_active: true },
-  { id: 'cat-7', name: 'Family Essentials Bundles', slug: 'family-bundles', description: 'Curated sets of high-use essentials', icon: 'Gift', sort_order: 7, is_active: true },
+// Official 6 Categories aligned with requirements
+export const INITIAL_CATEGORIES: RewardCategory[] = [
+  { id: 'cat-1', name: 'Oral Care', slug: 'oral-care', description: 'Toothpastes, genuine brushes and mouthwashes', icon: 'Sparkles', sort_order: 1, is_active: true },
+  { id: 'cat-2', name: 'Bath and Personal Care', slug: 'bath-personal-care', description: 'Bathing soaps, hair care, face and handwash', icon: 'Smile', sort_order: 2, is_active: true },
+  { id: 'cat-3', name: 'Household Cleaning', slug: 'household-cleaning', description: 'Dishwash bars, detergents, scrub pads and wipes', icon: 'Shield', sort_order: 3, is_active: true },
+  { id: 'cat-4', name: 'Kitchen Essentials', slug: 'kitchen-essentials', description: 'Bags, towels and airtight food storage containers', icon: 'Package', sort_order: 4, is_active: true },
+  { id: 'cat-5', name: 'Daily Essentials', slug: 'daily-essentials', description: 'Tissues, pens, stationery, cotton swabs and batteries', icon: 'Heart', sort_order: 5, is_active: true },
+  { id: 'cat-6', name: 'Family Essentials Bundles', slug: 'family-bundles', description: 'Curated value bundles of high-demand household products', icon: 'Gift', sort_order: 6, is_active: true },
 ];
 
-const INITIAL_PRODUCTS: RewardProduct[] = [
+// Initial 40 Products Catalog: Approved essentials are active; suggested items remain inactive until administrator configuration
+export const INITIAL_PRODUCTS: RewardProduct[] = [
+  // ── Category A: Oral Care ──────────────────────────────────────────────────
   {
     id: 'rew-1',
+    sku: 'OC-DAB-100',
     name: 'Dabur Red Ayurvedic Toothpaste',
     brand: 'Dabur',
     category_id: 'cat-1',
     category_name: 'Oral Care',
-    description: 'Traditional herbal ayurvedic toothpaste for complete dental protection.',
+    description: 'Traditional herbal ayurvedic toothpaste for complete dental and gum protection.',
     package_size: '100g Tube',
     image_url: '/images/rewards/dabur-red.jpg',
     coin_cost: 40,
     stock_quantity: 50,
+    cost_price_inr: 42.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 42.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
     id: 'rew-2',
+    sku: 'OC-COL-MAX',
+    name: 'Colgate Strong Teeth Toothpaste',
+    brand: 'Colgate',
+    category_id: 'cat-1',
+    category_name: 'Oral Care',
+    description: 'Calcium boost formula strengthening enamel and fighting cavities for healthy teeth.',
+    package_size: '100g Tube',
+    image_url: '/images/rewards/colgate-zigzag.jpg',
+    coin_cost: 40,
+    stock_quantity: 50,
+    cost_price_inr: 44.0,
+    supplier_name: 'Wholesale Depot',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-3',
+    sku: 'OC-TB-SGL',
+    name: 'Soft Bristle Toothbrush',
+    brand: 'Oral-B',
+    category_id: 'cat-1',
+    category_name: 'Oral Care',
+    description: 'Ultra-gentle gum massager bristles for sensitive teeth and deep interdental cleaning.',
+    package_size: '1 Piece Single',
+    image_url: '/images/rewards/colgate-zigzag.jpg',
+    coin_cost: 25,
+    stock_quantity: 60,
+    cost_price_inr: 24.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 3,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-4',
+    sku: 'OC-TB-MLT',
     name: 'Colgate ZigZag Deep Clean Toothbrushes',
     brand: 'Colgate',
     category_id: 'cat-1',
     category_name: 'Oral Care',
-    description: 'Multi-angle cross bristles for deep interdental plaque removal.',
-    package_size: 'Pack of 2',
+    description: 'Multi-angle cross bristles designed for deep interdental plaque removal.',
+    package_size: 'Pack of 3',
     image_url: '/images/rewards/colgate-zigzag.jpg',
-    coin_cost: 35,
-    stock_quantity: 60,
+    coin_cost: 45,
+    stock_quantity: 45,
+    cost_price_inr: 48.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 36.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-3',
+    id: 'rew-5',
+    sku: 'OC-MW-80',
+    name: 'Listerine Cool Mint Mouthwash',
+    brand: 'Listerine',
+    category_id: 'cat-1',
+    category_name: 'Oral Care',
+    description: 'Removes 99.9% of bad breath germs and prevents plaque buildup in hard-to-reach areas.',
+    package_size: '80ml Bottle',
+    image_url: '/images/rewards/dabur-red.jpg',
+    coin_cost: 50,
+    stock_quantity: 0,
+    cost_price_inr: 52.0,
+    supplier_name: 'Healthcare Wholesaler',
+    is_active: false, // Suggested item: inactive until administrator approval
+    is_archived: false,
+    availability_status: 'out_of_stock',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+
+  // ── Category B: Bath and Personal Care ─────────────────────────────────────
+  {
+    id: 'rew-6',
+    sku: 'BP-DOV-100',
+    name: 'Dove White Beauty Moisture Bar Soap',
+    brand: 'Dove',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Contains 1/4th moisturizing cream to keep skin softer, smoother and healthier.',
+    package_size: '100g Bar',
+    image_url: '/images/rewards/medimix-soap.jpg',
+    coin_cost: 50,
+    stock_quantity: 40,
+    cost_price_inr: 54.0,
+    supplier_name: 'Unilever Dist',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-7',
+    sku: 'BP-MED-125',
     name: 'Medimix 18 Herbs Ayurvedic Bathing Soap',
     brand: 'Medimix',
     category_id: 'cat-2',
-    category_name: 'Bath & Personal Care',
-    description: 'Nourishing herbal formulation proven to prevent blemishes and dryness.',
+    category_name: 'Bath and Personal Care',
+    description: 'Nourishing herbal formulation proven to prevent blemishes and skin irritation.',
     package_size: '125g Bar',
     image_url: '/images/rewards/medimix-soap.jpg',
     coin_cost: 30,
     stock_quantity: 75,
+    cost_price_inr: 32.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 3,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 32.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-4',
+    id: 'rew-8',
+    sku: 'BP-DET-75',
     name: 'Dettol Original Germ Protection Bathing Soap',
     brand: 'Dettol',
     category_id: 'cat-2',
-    category_name: 'Bath & Personal Care',
-    description: 'Trusted antibacterial protection for the whole family.',
-    package_size: '75g x 3 Multipack',
+    category_name: 'Bath and Personal Care',
+    description: 'Trusted antibacterial antiseptic bar protecting family hygiene daily.',
+    package_size: '75g Bar',
     image_url: '/images/rewards/dettol-multipack.jpg',
-    coin_cost: 75,
-    stock_quantity: 40,
+    coin_cost: 35,
+    stock_quantity: 50,
+    cost_price_inr: 36.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 85.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-5',
+    id: 'rew-9',
+    sku: 'BP-SHP-SAC',
+    name: 'Clinic Plus Strong & Long Shampoo Sachet Strip',
+    brand: 'Clinic Plus',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Milk protein enriched sachet strip for strong, manageable hair.',
+    package_size: '16 Sachets Pack',
+    image_url: '/images/rewards/parachute-oil.jpg',
+    coin_cost: 30,
+    stock_quantity: 40,
+    cost_price_inr: 28.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-10',
+    sku: 'BP-SHP-80',
+    name: 'Head & Shoulders Smooth & Silky Shampoo',
+    brand: 'Head & Shoulders',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Anti-dandruff daily shampoo leaving scalp clean and hair silky smooth.',
+    package_size: '72ml Bottle',
+    image_url: '/images/rewards/parachute-oil.jpg',
+    coin_cost: 55,
+    stock_quantity: 25,
+    cost_price_inr: 60.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-11',
+    sku: 'BP-OIL-100',
     name: 'Parachute 100% Pure Coconut Hair Oil',
     brand: 'Parachute',
     category_id: 'cat-2',
-    category_name: 'Bath & Personal Care',
-    description: 'Naturally filtered pure coconut oil for nourishment and scalp health.',
+    category_name: 'Bath and Personal Care',
+    description: 'Naturally filtered pure coconut oil for deep nourishment and scalp conditioning.',
     package_size: '100ml Bottle',
     image_url: '/images/rewards/parachute-oil.jpg',
     coin_cost: 45,
     stock_quantity: 55,
+    cost_price_inr: 46.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 46.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-6',
+    id: 'rew-12',
+    sku: 'BP-CND-80',
+    name: 'Dove Daily Shine Hair Conditioner',
+    brand: 'Dove',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Nutritive serum conditioner that locks in moisture and detangles gently.',
+    package_size: '80ml Bottle',
+    image_url: '/images/rewards/parachute-oil.jpg',
+    coin_cost: 60,
+    stock_quantity: 20,
+    cost_price_inr: 65.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-13',
+    sku: 'BP-FW-50',
+    name: 'Himalaya Purifying Neem Face Wash',
+    brand: 'Himalaya',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Soap-free herbal face wash that cleanses impurities and prevents pimples.',
+    package_size: '50ml Tube',
+    image_url: '/images/rewards/medimix-soap.jpg',
+    coin_cost: 50,
+    stock_quantity: 30,
+    cost_price_inr: 52.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-14',
+    sku: 'BP-HW-REF',
+    name: 'Lifebuoy Total 10 Handwash Refill Pouch',
+    brand: 'Lifebuoy',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Activ Silver formula delivering 99.9% germ protection in 10 seconds.',
+    package_size: '175ml Pouch',
+    image_url: '/images/rewards/medimix-soap.jpg',
+    coin_cost: 40,
+    stock_quantity: 35,
+    cost_price_inr: 42.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-15',
+    sku: 'BP-HW-PMP',
+    name: 'Dettol Liquid Handwash Pump Dispenser',
+    brand: 'Dettol',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Hygienic pump dispenser with skin moisturizers and pH-balanced antibacterial shield.',
+    package_size: '200ml Bottle',
+    image_url: '/images/rewards/dettol-multipack.jpg',
+    coin_cost: 65,
+    stock_quantity: 25,
+    cost_price_inr: 70.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-16',
+    sku: 'BP-CMB-NM',
+    name: 'Handcrafted Neem Wood Pocket Comb',
+    brand: 'PureRoots',
+    category_id: 'cat-2',
+    category_name: 'Bath and Personal Care',
+    description: 'Anti-static natural neem wood comb that prevents dandruff and detangles gently.',
+    package_size: '1 Piece',
+    image_url: '/images/rewards/neem-comb.jpg',
+    coin_cost: 30,
+    stock_quantity: 60,
+    cost_price_inr: 28.0,
+    supplier_name: 'Telangana Handicrafts',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+
+  // ── Category C: Household Cleaning ─────────────────────────────────────────
+  {
+    id: 'rew-17',
+    sku: 'HC-VIM-BAR',
     name: 'Vim Lemon Dishwash Bar with Polycoat',
     brand: 'Vim',
     category_id: 'cat-3',
@@ -135,15 +389,39 @@ const INITIAL_PRODUCTS: RewardProduct[] = [
     image_url: '/images/rewards/vim-bar.jpg',
     coin_cost: 25,
     stock_quantity: 90,
+    cost_price_inr: 22.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 4,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 22.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-7',
+    id: 'rew-18',
+    sku: 'HC-VIM-LIQ',
+    name: 'Vim Gel Lemon Dishwash Liquid',
+    brand: 'Vim',
+    category_id: 'cat-3',
+    category_name: 'Household Cleaning',
+    description: 'Leaves no white residue, clean sink aroma with 1 spoonful degreasing power.',
+    package_size: '250ml Bottle',
+    image_url: '/images/rewards/vim-bar.jpg',
+    coin_cost: 50,
+    stock_quantity: 40,
+    cost_price_inr: 52.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-19',
+    sku: 'HC-SB-PAD',
     name: 'Scotch-Brite Heavy Duty Scrub Pad',
     brand: 'Scotch-Brite',
     category_id: 'cat-3',
@@ -153,181 +431,542 @@ const INITIAL_PRODUCTS: RewardProduct[] = [
     image_url: '/images/rewards/scotch-brite.jpg',
     coin_cost: 35,
     stock_quantity: 70,
+    cost_price_inr: 35.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 3,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 35.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-8',
+    id: 'rew-20',
+    sku: 'HC-SB-SPN',
+    name: 'Scotch-Brite Cellulose Sponge Wipe',
+    brand: 'Scotch-Brite',
+    category_id: 'cat-3',
+    category_name: 'Household Cleaning',
+    description: 'Absorbs 10 times its own weight in water; one-swipe table and platform cleaning.',
+    package_size: 'Pack of 2',
+    image_url: '/images/rewards/scotch-brite.jpg',
+    coin_cost: 45,
+    stock_quantity: 35,
+    cost_price_inr: 46.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-21',
+    sku: 'HC-DET-SAC',
+    name: 'Surf Excel Easy Wash Detergent Powder Sachets',
+    brand: 'Surf Excel',
+    category_id: 'cat-3',
+    category_name: 'Household Cleaning',
+    description: 'Compact single-load wash sachets for stain removal and laundry freshness.',
+    package_size: 'Strip of 10 Sachets',
+    image_url: '/images/rewards/surf-excel.jpg',
+    coin_cost: 30,
+    stock_quantity: 45,
+    cost_price_inr: 28.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-22',
+    sku: 'HC-SRF-500',
     name: 'Surf Excel Easy Wash Detergent Powder',
     brand: 'Surf Excel',
     category_id: 'cat-3',
     category_name: 'Household Cleaning',
-    description: 'Superior stain removal technology in bucket wash for everyday laundry.',
+    description: 'Superior stain removal technology in bucket wash for everyday family laundry.',
     package_size: '500g Pack',
     image_url: '/images/rewards/surf-excel.jpg',
     coin_cost: 65,
     stock_quantity: 45,
+    cost_price_inr: 70.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 70.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-9',
+    id: 'rew-23',
+    sku: 'HC-MIC-CLT',
+    name: 'Microfiber Multi-Surface Cleaning Cloth',
+    brand: 'CleanHome',
+    category_id: 'cat-3',
+    category_name: 'Household Cleaning',
+    description: 'Streak-free lintless microfiber towels for kitchen slabs, glass and dining tables.',
+    package_size: 'Pack of 2',
+    image_url: '/images/rewards/kitchen-wipes.jpg',
+    coin_cost: 45,
+    stock_quantity: 40,
+    cost_price_inr: 44.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-24',
+    sku: 'HC-DET-WIP',
+    name: 'Dettol Disinfectant Multi-Action Wipes',
+    brand: 'Dettol',
+    category_id: 'cat-3',
+    category_name: 'Household Cleaning',
+    description: 'Sanitizing moist wipes that eliminate germs from door handles, remotes and switches.',
+    package_size: 'Pack of 30 Wipes',
+    image_url: '/images/rewards/kitchen-wipes.jpg',
+    coin_cost: 60,
+    stock_quantity: 25,
+    cost_price_inr: 65.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+
+  // ── Category D: Kitchen Essentials ─────────────────────────────────────────
+  {
+    id: 'rew-25',
+    sku: 'KE-COT-BAG',
     name: 'Reusable Heavy-Duty Cotton Grocery Carry Bag',
     brand: 'Easy Farm Eco',
     category_id: 'cat-4',
     category_name: 'Kitchen Essentials',
-    description: '100% biodegradable unbleached cotton bag with reinforced handles.',
-    package_size: 'Standard 15L',
+    description: '100% biodegradable unbleached cotton bag with reinforced handles for weekly vegetables.',
+    package_size: 'Standard 15L Tote',
     image_url: '/images/rewards/cotton-bag.jpg',
     coin_cost: 50,
     stock_quantity: 80,
+    cost_price_inr: 48.0,
+    supplier_name: 'Local Artisan Guild',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 48.0,
-    supplier_name: 'Local Artisan Guild',
   },
   {
-    id: 'rew-10',
+    id: 'rew-26',
+    sku: 'KE-KTC-TWL',
     name: 'Multipurpose Cotton Kitchen Wipes',
     brand: 'CleanHome',
     category_id: 'cat-4',
     category_name: 'Kitchen Essentials',
-    description: 'Ultra-absorbent lint-free cotton towels for wiping counters and dishes.',
+    description: 'Ultra-absorbent lint-free cotton towels for wiping counters and dry utensils.',
     package_size: 'Pack of 2',
     image_url: '/images/rewards/kitchen-wipes.jpg',
     coin_cost: 40,
     stock_quantity: 65,
-    is_active: true,
-    max_claims_per_customer: 2,
-    max_claims_per_order: 1,
-    min_order_value: 0,
     cost_price_inr: 38.0,
     supplier_name: 'Direct Wholesale',
-  },
-  {
-    id: 'rew-11',
-    name: 'Handcrafted Neem Wood Pocket Comb',
-    brand: 'PureRoots',
-    category_id: 'cat-5',
-    category_name: 'Daily Personal Essentials',
-    description: 'Anti-static organic neem wood comb that prevents dandruff and detangles gently.',
-    package_size: '1 Piece',
-    image_url: '/images/rewards/neem-comb.jpg',
-    coin_cost: 30,
-    stock_quantity: 60,
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 28.0,
-    supplier_name: 'Telangana Handicrafts',
   },
   {
-    id: 'rew-12',
+    id: 'rew-27',
+    sku: 'KE-BOX-350',
+    name: 'Milton Airtight Food Storage Container',
+    brand: 'Milton',
+    category_id: 'cat-4',
+    category_name: 'Kitchen Essentials',
+    description: 'BPA-free airtight leak-proof container ideal for chopped veggies and snacks.',
+    package_size: '350ml Box',
+    image_url: '/images/rewards/kitchen-wipes.jpg',
+    coin_cost: 55,
+    stock_quantity: 30,
+    cost_price_inr: 58.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-28',
+    sku: 'KE-ZIP-BAG',
+    name: 'Vegetable Fresh Produce Storage Bags',
+    brand: 'EcoZip',
+    category_id: 'cat-4',
+    category_name: 'Kitchen Essentials',
+    description: 'Breathable reusable net bags that extend refrigerator freshness for leafy greens.',
+    package_size: 'Pack of 4 Bags',
+    image_url: '/images/rewards/cotton-bag.jpg',
+    coin_cost: 45,
+    stock_quantity: 40,
+    cost_price_inr: 45.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-29',
+    sku: 'KE-UTL-SS',
+    name: 'Stainless Steel Reusable Masala & Seed Box',
+    brand: 'SteelCraft',
+    category_id: 'cat-4',
+    category_name: 'Kitchen Essentials',
+    description: 'Food-grade rustproof stainless steel container with snug lid for kitchen pantry.',
+    package_size: '200ml Single',
+    image_url: '/images/rewards/kitchen-wipes.jpg',
+    coin_cost: 60,
+    stock_quantity: 25,
+    cost_price_inr: 65.0,
+    supplier_name: 'Kitchenware Depot',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+
+  // ── Category E: Daily Essentials ───────────────────────────────────────────
+  {
+    id: 'rew-30',
+    sku: 'DE-TIS-PKT',
     name: 'Origami Soft 3-Ply Pocket Tissues',
     brand: 'Origami',
     category_id: 'cat-5',
-    category_name: 'Daily Personal Essentials',
+    category_name: 'Daily Essentials',
     description: 'Gentle on skin, compact travel-friendly pocket tissue packs.',
     package_size: 'Pack of 6',
     image_url: '/images/rewards/pocket-tissues.jpg',
     coin_cost: 25,
     stock_quantity: 80,
+    cost_price_inr: 24.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 3,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 24.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-13',
-    name: 'Duracell Chota Power AAA Alkaline Batteries',
-    brand: 'Duracell',
-    category_id: 'cat-6',
-    category_name: 'Everyday Utility',
-    description: 'Long-lasting power for TV remotes, kitchen scales and clocks.',
-    package_size: 'Pack of 2',
-    image_url: '/images/rewards/duracell-aaa.jpg',
-    coin_cost: 40,
+    id: 'rew-31',
+    sku: 'DE-HKF-COT',
+    name: '100% Pure Cotton Soft Handkerchiefs',
+    brand: 'DailyComfort',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
+    description: 'Soft absorbent combed cotton handkerchiefs with neat stitched edges.',
+    package_size: 'Pack of 3',
+    image_url: '/images/rewards/pocket-tissues.jpg',
+    coin_cost: 35,
     stock_quantity: 50,
-    is_active: true,
+    cost_price_inr: 36.0,
+    supplier_name: 'Textile Guild',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 44.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-14',
+    id: 'rew-32',
+    sku: 'DE-PEN-BAL',
+    name: 'Reynolds 045 Fine Carbide Ballpoint Pens',
+    brand: 'Reynolds',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
+    description: 'Smooth smudge-free blue ball pens for home accounts, grocery lists and school.',
+    package_size: 'Pack of 5 Pens',
+    image_url: '/images/rewards/classmate-notebook.jpg',
+    coin_cost: 30,
+    stock_quantity: 60,
+    cost_price_inr: 30.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 3,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-33',
+    sku: 'DE-NOTE-BK',
     name: 'Classmate Pulse Spiral Bound Long Notebook',
     brand: 'Classmate',
-    category_id: 'cat-6',
-    category_name: 'Everyday Utility',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
     description: 'Single lined 160 pages notebook with smooth chlorine-free paper.',
     package_size: '160 Pages',
     image_url: '/images/rewards/classmate-notebook.jpg',
     coin_cost: 45,
     stock_quantity: 40,
+    cost_price_inr: 45.0,
+    supplier_name: 'Direct Wholesale',
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 2,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 45.0,
-    supplier_name: 'Direct Wholesale',
   },
   {
-    id: 'rew-15',
-    name: 'Morning Freshness & Oral Care Bundle',
+    id: 'rew-34',
+    sku: 'DE-PAD-7S',
+    name: 'Stayfree Secure Cotton Soft Wings Pads',
+    brand: 'Stayfree',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
+    description: 'Cotton soft sanitary napkins with leak lock gel and wings protection.',
+    package_size: 'Pack of 7',
+    image_url: '/images/rewards/pocket-tissues.jpg',
+    coin_cost: 40,
+    stock_quantity: 35,
+    cost_price_inr: 42.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-35',
+    sku: 'DE-SWB-100',
+    name: 'Pure Cotton Ear Buds with Biodegradable Stems',
+    brand: 'PureCare',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
+    description: 'Dual-tipped pure sterilized cotton swabs with eco-friendly paper sticks.',
+    package_size: 'Box of 100 Sticks',
+    image_url: '/images/rewards/pocket-tissues.jpg',
+    coin_cost: 30,
+    stock_quantity: 45,
+    cost_price_inr: 30.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: false,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-36',
+    sku: 'DE-BAT-AAA',
+    name: 'Duracell Chota Power AAA Alkaline Batteries',
+    brand: 'Duracell',
+    category_id: 'cat-5',
+    category_name: 'Daily Essentials',
+    description: 'Long-lasting dependable power for TV remotes, kitchen scales and clocks.',
+    package_size: 'Pack of 2',
+    image_url: '/images/rewards/duracell-aaa.jpg',
+    coin_cost: 40,
+    stock_quantity: 50,
+    cost_price_inr: 44.0,
+    supplier_name: 'Direct Wholesale',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 2,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+
+  // ── Category F: Family Essentials Bundles ───────────────────────────────────
+  {
+    id: 'rew-37',
+    sku: 'BD-ORAL-CARE',
+    name: 'Oral Care Morning Freshness Bundle',
     brand: 'Easy Farm Essentials',
-    category_id: 'cat-7',
+    category_id: 'cat-6',
     category_name: 'Family Essentials Bundles',
-    description: 'Includes Dabur Red Ayurvedic Toothpaste (100g) and Colgate ZigZag (Pack of 2).',
+    description: 'Includes Dabur Red Ayurvedic Toothpaste (100g) and Colgate ZigZag Cross Bristle Toothbrush (Pack of 2).',
     package_size: '2 Products Bundle',
+    bundle_components: ['Dabur Red Toothpaste 100g', 'Colgate ZigZag 2pk'],
     image_url: '/images/rewards/oral-bundle.jpg',
     coin_cost: 70,
     stock_quantity: 30,
-    is_active: true,
-    max_claims_per_customer: 1,
-    max_claims_per_order: 1,
-    min_order_value: 0,
     cost_price_inr: 75.0,
     supplier_name: 'In-house Packaged',
-  },
-  {
-    id: 'rew-16',
-    name: 'Pure Hygiene Bath & Kitchen Care Bundle',
-    brand: 'Easy Farm Essentials',
-    category_id: 'cat-7',
-    category_name: 'Family Essentials Bundles',
-    description: 'Includes Medimix 125g Soap, Vim 200g Dishwash Bar, and Scotch-Brite (Pack of 3).',
-    package_size: '3 Products Bundle',
-    image_url: '/images/rewards/hygiene-bundle.jpg',
-    coin_cost: 80,
-    stock_quantity: 30,
     is_active: true,
+    is_archived: false,
+    availability_status: 'available',
     max_claims_per_customer: 1,
     max_claims_per_order: 1,
     min_order_value: 0,
-    cost_price_inr: 88.0,
+  },
+  {
+    id: 'rew-38',
+    sku: 'BD-BATH-CARE',
+    name: 'Bathing & Personal Care Essentials Bundle',
+    brand: 'Easy Farm Essentials',
+    category_id: 'cat-6',
+    category_name: 'Family Essentials Bundles',
+    description: 'Includes Medimix 18 Herbs 125g Soap and Handcrafted Pure Neem Wood Pocket Comb.',
+    package_size: '2 Products Bundle',
+    bundle_components: ['Medimix 125g Herbal Soap', 'PureRoots Neem Wood Comb'],
+    image_url: '/images/rewards/hygiene-bundle.jpg',
+    coin_cost: 55,
+    stock_quantity: 30,
+    cost_price_inr: 58.0,
     supplier_name: 'In-house Packaged',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 1,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-39',
+    sku: 'BD-KTN-CLN',
+    name: 'Kitchen Utensil Cleaning Combo Bundle',
+    brand: 'Easy Farm Essentials',
+    category_id: 'cat-6',
+    category_name: 'Family Essentials Bundles',
+    description: 'Includes Vim Lemon 200g Dishwash Bar and Scotch-Brite Heavy Duty Scrub Pad (Pack of 3).',
+    package_size: '2 Products Bundle',
+    bundle_components: ['Vim Dishwash Bar 200g', 'Scotch-Brite Scrub Pad 3pk'],
+    image_url: '/images/rewards/hygiene-bundle.jpg',
+    coin_cost: 55,
+    stock_quantity: 35,
+    cost_price_inr: 55.0,
+    supplier_name: 'In-house Packaged',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 1,
+    max_claims_per_order: 1,
+    min_order_value: 0,
+  },
+  {
+    id: 'rew-40',
+    sku: 'BD-HSE-TOT',
+    name: 'Household & Kitchen Complete Care Bundle',
+    brand: 'Easy Farm Essentials',
+    category_id: 'cat-6',
+    category_name: 'Family Essentials Bundles',
+    description: 'Includes Vim Lemon Bar (200g), Scotch-Brite Scrub Pads (3pk), and Surf Excel Easy Wash (500g).',
+    package_size: '3 Products Bundle',
+    bundle_components: ['Vim Dishwash Bar 200g', 'Scotch-Brite Scrub Pad 3pk', 'Surf Excel 500g'],
+    image_url: '/images/rewards/hygiene-bundle.jpg',
+    coin_cost: 110,
+    stock_quantity: 20,
+    cost_price_inr: 120.0,
+    supplier_name: 'In-house Packaged',
+    is_active: true,
+    is_archived: false,
+    availability_status: 'available',
+    max_claims_per_customer: 1,
+    max_claims_per_order: 1,
+    min_order_value: 0,
   },
 ];
 
-// In-memory runtime fallbacks for resilience when table is freshly initialized or migrated
-let memorySettings: EasyCoinsSettings = { ...DEFAULT_SETTINGS };
-let memoryCategories: RewardCategory[] = [...INITIAL_CATEGORIES];
-let memoryProducts: RewardProduct[] = [...INITIAL_PRODUCTS];
+// Persistent File Storage configuration
+const PERSIST_FILE = path.join(process.cwd(), 'lib', 'data', 'easy-coins-catalog.json');
+
+function ensureDirectoryExists(filePath: string) {
+  const dirname = path.dirname(filePath);
+  if (!fs.existsSync(dirname)) {
+    fs.mkdirSync(dirname, { recursive: true });
+  }
+}
+
+function loadPersistedState(): {
+  settings: EasyCoinsSettings;
+  categories: RewardCategory[];
+  products: RewardProduct[];
+} {
+  try {
+    if (fs.existsSync(PERSIST_FILE)) {
+      const content = fs.readFileSync(PERSIST_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
+        return {
+          settings: parsed.settings || DEFAULT_SETTINGS,
+          categories: parsed.categories || INITIAL_CATEGORIES,
+          products: parsed.products,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[EasyCoinsService] Could not read catalog file, using in-code seed:', err);
+  }
+
+  // Initial seed save
+  const initial = {
+    settings: { ...DEFAULT_SETTINGS },
+    categories: [...INITIAL_CATEGORIES],
+    products: [...INITIAL_PRODUCTS],
+  };
+  try {
+    ensureDirectoryExists(PERSIST_FILE);
+    fs.writeFileSync(PERSIST_FILE, JSON.stringify(initial, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('[EasyCoinsService] Failed to write initial catalog file:', e);
+  }
+  return initial;
+}
+
+function savePersistedState(state: {
+  settings?: EasyCoinsSettings;
+  categories?: RewardCategory[];
+  products?: RewardProduct[];
+}) {
+  try {
+    ensureDirectoryExists(PERSIST_FILE);
+    let existing: any = {};
+    if (fs.existsSync(PERSIST_FILE)) {
+      existing = JSON.parse(fs.readFileSync(PERSIST_FILE, 'utf-8') || '{}');
+    }
+    const combined = {
+      settings: state.settings || existing.settings || memorySettings,
+      categories: state.categories || existing.categories || memoryCategories,
+      products: state.products || existing.products || memoryProducts,
+      updated_at: new Date().toISOString(),
+    };
+    fs.writeFileSync(PERSIST_FILE, JSON.stringify(combined, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[EasyCoinsService] Failed to persist catalog state to disk:', err);
+  }
+}
+
+// Runtime state initialized from durable disk store
+const initialSaved = loadPersistedState();
+let memorySettings: EasyCoinsSettings = initialSaved.settings;
+let memoryCategories: RewardCategory[] = initialSaved.categories;
+let memoryProducts: RewardProduct[] = initialSaved.products;
 let memoryLedger: EasyCoinsLedgerEntry[] = [];
 let memoryClaims: RewardClaim[] = [];
 
@@ -353,6 +992,7 @@ export class EasyCoinsService {
           min_qualifying_order: Number(data.min_qualifying_order) || 100,
           max_rewards_per_order: Number(data.max_rewards_per_order) || 1,
         };
+        savePersistedState({ settings: memorySettings });
         return memorySettings;
       }
     } catch {
@@ -362,7 +1002,7 @@ export class EasyCoinsService {
   }
 
   /**
-   * Retrieves active reward catalog with categories
+   * Retrieves active reward catalog with categories for customer checkout & rewards browsing
    */
   static async getCatalog(orderSubtotal?: number): Promise<{
     categories: RewardCategory[];
@@ -373,7 +1013,6 @@ export class EasyCoinsService {
 
     try {
       const supabase = createAdminClient();
-
       const [catRes, prodRes] = await Promise.all([
         supabase
           .from('reward_categories')
@@ -384,6 +1023,7 @@ export class EasyCoinsService {
           .from('reward_products')
           .select('*, reward_categories(name)')
           .eq('is_active', true)
+          .eq('is_archived', false)
           .order('coin_cost', { ascending: true }),
       ]);
 
@@ -400,6 +1040,7 @@ export class EasyCoinsService {
 
         const products: RewardProduct[] = prodRes.data.map((p: any) => ({
           id: p.id,
+          sku: p.sku,
           name: p.name,
           brand: p.brand,
           category_id: p.category_id,
@@ -410,6 +1051,9 @@ export class EasyCoinsService {
           coin_cost: Number(p.coin_cost) || 0,
           stock_quantity: Number(p.stock_quantity) || 0,
           is_active: p.is_active ?? true,
+          is_archived: p.is_archived ?? false,
+          availability_status: p.availability_status || (p.stock_quantity > 0 ? 'available' : 'out_of_stock'),
+          bundle_components: p.bundle_components || [],
           max_claims_per_customer: p.max_claims_per_customer,
           max_claims_per_order: p.max_claims_per_order || 1,
           min_order_value: Number(p.min_order_value) || 0,
@@ -420,14 +1064,146 @@ export class EasyCoinsService {
         return { categories, products, settings };
       }
     } catch {
-      // Use fallback catalog
+      // Use durable memory/file store
     }
 
+    // Customer catalog only shows active & non-archived products
+    const customerProducts = memoryProducts.filter((p) => p.is_active && !p.is_archived);
+
     return {
-      categories: memoryCategories,
-      products: memoryProducts,
+      categories: memoryCategories.filter((c) => c.is_active),
+      products: customerProducts,
       settings,
     };
+  }
+
+  /**
+   * Admin catalog query with full filtering & search support
+   */
+  static async adminGetProducts(filters?: {
+    search?: string;
+    category?: string;
+    status?: 'all' | 'active' | 'inactive' | 'archived';
+    stock?: 'all' | 'in_stock' | 'out_of_stock';
+    sort?: 'coin_asc' | 'coin_desc' | 'name_asc' | 'name_desc';
+  }): Promise<{
+    categories: RewardCategory[];
+    products: RewardProduct[];
+    settings: EasyCoinsSettings;
+  }> {
+    const settings = await this.getSettings();
+
+    try {
+      const supabase = createAdminClient();
+      let query = supabase.from('reward_products').select('*, reward_categories(name)');
+
+      if (filters?.category && filters.category !== 'all') {
+        query = query.eq('category_id', filters.category);
+      }
+      if (filters?.status === 'active') {
+        query = query.eq('is_active', true).eq('is_archived', false);
+      } else if (filters?.status === 'inactive') {
+        query = query.eq('is_active', false).eq('is_archived', false);
+      } else if (filters?.status === 'archived') {
+        query = query.eq('is_archived', true);
+      }
+      if (filters?.stock === 'in_stock') {
+        query = query.gt('stock_quantity', 0);
+      } else if (filters?.stock === 'out_of_stock') {
+        query = query.lte('stock_quantity', 0);
+      }
+
+      if (filters?.sort === 'coin_desc') {
+        query = query.order('coin_cost', { ascending: false });
+      } else if (filters?.sort === 'name_asc') {
+        query = query.order('name', { ascending: true });
+      } else if (filters?.sort === 'name_desc') {
+        query = query.order('name', { ascending: false });
+      } else {
+        query = query.order('coin_cost', { ascending: true });
+      }
+
+      const { data, error } = await query;
+      if (data && !error && data.length > 0) {
+        let results: RewardProduct[] = data.map((p: any) => ({
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          brand: p.brand,
+          category_id: p.category_id,
+          category_name: p.reward_categories?.name || 'Essentials',
+          description: p.description,
+          package_size: p.package_size,
+          image_url: p.image_url || '/images/rewards/neem-comb.jpg',
+          coin_cost: Number(p.coin_cost) || 0,
+          stock_quantity: Number(p.stock_quantity) || 0,
+          is_active: p.is_active ?? true,
+          is_archived: p.is_archived ?? false,
+          availability_status: p.availability_status || (p.stock_quantity > 0 ? 'available' : 'out_of_stock'),
+          bundle_components: p.bundle_components || [],
+          max_claims_per_customer: p.max_claims_per_customer,
+          max_claims_per_order: p.max_claims_per_order || 1,
+          min_order_value: Number(p.min_order_value) || 0,
+          cost_price_inr: Number(p.cost_price_inr) || 0,
+          supplier_name: p.supplier_name,
+        }));
+
+        if (filters?.search) {
+          const s = filters.search.toLowerCase();
+          results = results.filter(
+            (p) =>
+              p.name.toLowerCase().includes(s) ||
+              p.brand?.toLowerCase().includes(s) ||
+              p.sku?.toLowerCase().includes(s)
+          );
+        }
+
+        return { categories: memoryCategories, products: results, settings };
+      }
+    } catch {
+      // Memory fallback
+    }
+
+    // Apply memory filters
+    let list = [...memoryProducts];
+
+    if (filters?.category && filters.category !== 'all') {
+      list = list.filter((p) => p.category_id === filters.category);
+    }
+    if (filters?.status === 'active') {
+      list = list.filter((p) => p.is_active && !p.is_archived);
+    } else if (filters?.status === 'inactive') {
+      list = list.filter((p) => !p.is_active && !p.is_archived);
+    } else if (filters?.status === 'archived') {
+      list = list.filter((p) => p.is_archived);
+    }
+    if (filters?.stock === 'in_stock') {
+      list = list.filter((p) => p.stock_quantity > 0);
+    } else if (filters?.stock === 'out_of_stock') {
+      list = list.filter((p) => p.stock_quantity <= 0);
+    }
+    if (filters?.search) {
+      const s = filters.search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(s) ||
+          p.brand?.toLowerCase().includes(s) ||
+          p.sku?.toLowerCase().includes(s)
+      );
+    }
+
+    // Sorting
+    if (filters?.sort === 'coin_desc') {
+      list.sort((a, b) => b.coin_cost - a.coin_cost);
+    } else if (filters?.sort === 'name_asc') {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (filters?.sort === 'name_desc') {
+      list.sort((a, b) => b.name.localeCompare(a.name));
+    } else {
+      list.sort((a, b) => a.coin_cost - b.coin_cost);
+    }
+
+    return { categories: memoryCategories, products: list, settings };
   }
 
   /**
@@ -445,6 +1221,7 @@ export class EasyCoinsService {
       if (data && !error) {
         return {
           id: data.id,
+          sku: data.sku,
           name: data.name,
           brand: data.brand,
           category_id: data.category_id,
@@ -455,6 +1232,9 @@ export class EasyCoinsService {
           coin_cost: Number(data.coin_cost) || 0,
           stock_quantity: Number(data.stock_quantity) || 0,
           is_active: data.is_active ?? true,
+          is_archived: data.is_archived ?? false,
+          availability_status: data.availability_status || (data.stock_quantity > 0 ? 'available' : 'out_of_stock'),
+          bundle_components: data.bundle_components || [],
           max_claims_per_customer: data.max_claims_per_customer,
           max_claims_per_order: data.max_claims_per_order || 1,
           min_order_value: Number(data.min_order_value) || 0,
@@ -477,7 +1257,6 @@ export class EasyCoinsService {
 
     try {
       const supabase = createAdminClient();
-      // Get the latest balance_after entry from the atomic ledger
       const { data, error } = await supabase
         .from('easy_coins_ledger')
         .select('balance_after')
@@ -490,7 +1269,6 @@ export class EasyCoinsService {
         return Math.max(0, data.balance_after);
       }
 
-      // If no single row with balance_after, sum positive and negative ledger rows
       const { data: allRows } = await supabase
         .from('easy_coins_ledger')
         .select('amount')
@@ -509,7 +1287,7 @@ export class EasyCoinsService {
       return Math.max(0, customerEntries[customerEntries.length - 1].balance_after);
     }
 
-    // Default starting demo balance for seamless testing if no transactions yet
+    // Default starting demo balance for testing if no transactions yet
     return 150;
   }
 
@@ -580,7 +1358,6 @@ export class EasyCoinsService {
         .filter((e) => e.customer_id === customerId)
         .reverse();
 
-      // Seed an initial transaction if ledger is empty for demo/testing
       if (ledger.length === 0) {
         const welcomeEntry: EasyCoinsLedgerEntry = {
           id: `led-welcome-${customerId}`,
@@ -688,7 +1465,7 @@ export class EasyCoinsService {
     }
 
     const product = await this.getProductById(params.reward_product_id);
-    if (!product || !product.is_active) {
+    if (!product || !product.is_active || product.is_archived) {
       return { success: false, error: 'Selected reward product is no longer available.' };
     }
 
@@ -710,10 +1487,13 @@ export class EasyCoinsService {
       customer_id: params.customer_id,
       reward_product_id: product.id,
       reward_name_snapshot: product.name,
+      brand_snapshot: product.brand,
       package_size_snapshot: product.package_size,
+      image_url_snapshot: product.image_url,
       coin_cost_snapshot: product.coin_cost,
       quantity: 1,
       claim_status: 'reserved',
+      reserved_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
 
@@ -737,10 +1517,13 @@ export class EasyCoinsService {
           customer_id: params.customer_id,
           reward_product_id: product.id,
           reward_name_snapshot: product.name,
+          brand_snapshot: product.brand,
           package_size_snapshot: product.package_size,
+          image_url_snapshot: product.image_url,
           coin_cost_snapshot: product.coin_cost,
           quantity: 1,
           claim_status: 'reserved',
+          reserved_at: new Date().toISOString(),
         })
         .select()
         .maybeSingle();
@@ -750,8 +1533,10 @@ export class EasyCoinsService {
       }
     } catch {
       // Memory update
-      product.stock_quantity = Math.max(0, product.stock_quantity - 1);
     }
+
+    product.stock_quantity = Math.max(0, product.stock_quantity - 1);
+    savePersistedState({ products: memoryProducts });
 
     memoryClaims.push(claim);
     return { success: true, claim };
@@ -767,7 +1552,6 @@ export class EasyCoinsService {
     try {
       const supabase = createAdminClient();
 
-      // Find claim by order_id
       const { data: claim, error } = await supabase
         .from('reward_claims')
         .select('*')
@@ -775,16 +1559,15 @@ export class EasyCoinsService {
         .maybeSingle();
 
       if (claim && !error) {
-        // Update claim to confirmed
         await supabase
           .from('reward_claims')
           .update({
             claim_status: 'confirmed',
+            confirmed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', claim.id);
 
-        // Deduct coins from ledger
         await this.recordLedgerEntry({
           customer_id: claim.customer_id,
           order_id: claim.order_id,
@@ -805,6 +1588,7 @@ export class EasyCoinsService {
     );
     if (memClaim) {
       memClaim.claim_status = 'confirmed';
+      memClaim.confirmed_at = new Date().toISOString();
       memClaim.updated_at = new Date().toISOString();
 
       await this.recordLedgerEntry({
@@ -823,7 +1607,7 @@ export class EasyCoinsService {
   }
 
   /**
-   * Releases reserved reward back to inventory if payment fails or user cancels
+   * Releases reserved reward back to inventory if payment fails or customer cancels
    */
   static async releaseRewardReservation(params: {
     order_id: string;
@@ -840,7 +1624,6 @@ export class EasyCoinsService {
         .maybeSingle();
 
       if (claim) {
-        // Release claim
         await supabase
           .from('reward_claims')
           .update({
@@ -850,7 +1633,6 @@ export class EasyCoinsService {
           })
           .eq('id', claim.id);
 
-        // Restore stock
         const { data: prod } = await supabase
           .from('reward_products')
           .select('stock_quantity')
@@ -866,6 +1648,10 @@ export class EasyCoinsService {
             })
             .eq('id', claim.reward_product_id);
         }
+
+        const memProd = memoryProducts.find((p) => p.id === claim.reward_product_id);
+        if (memProd) memProd.stock_quantity += 1;
+        savePersistedState({ products: memoryProducts });
 
         return { success: true };
       }
@@ -883,6 +1669,7 @@ export class EasyCoinsService {
       const prod = memoryProducts.find((p) => p.id === memClaim.reward_product_id);
       if (prod) {
         prod.stock_quantity += 1;
+        savePersistedState({ products: memoryProducts });
       }
     }
 
@@ -907,7 +1694,7 @@ export class EasyCoinsService {
       return { coins_awarded: 0 };
     }
 
-    // Check idempotency: Ensure coins haven't already been awarded for this order
+    // Idempotency check: Ensure coins haven't already been awarded for this order
     try {
       const supabase = createAdminClient();
       const { data: existing } = await supabase
@@ -931,7 +1718,6 @@ export class EasyCoinsService {
       return { coins_awarded: existingMem.amount };
     }
 
-    // Calculate coins: (Subtotal / 100) * earn_rate_per_100_inr
     const calculatedCoins = Math.floor(
       (params.eligible_subtotal / 100) * settings.earn_rate_per_100_inr
     );
@@ -965,7 +1751,6 @@ export class EasyCoinsService {
     try {
       const supabase = createAdminClient();
 
-      // 1. Check if coins were earned on this order
       const { data: earnedRow } = await supabase
         .from('easy_coins_ledger')
         .select('*')
@@ -985,7 +1770,6 @@ export class EasyCoinsService {
         });
       }
 
-      // 2. Check if a reward was claimed with this order
       const { data: claim } = await supabase
         .from('reward_claims')
         .select('*')
@@ -996,7 +1780,6 @@ export class EasyCoinsService {
       if (claim) {
         restored_spent = claim.coin_cost_snapshot;
 
-        // Refund the coins back to customer
         await this.recordLedgerEntry({
           customer_id: claim.customer_id,
           order_id: params.order_id,
@@ -1006,17 +1789,16 @@ export class EasyCoinsService {
           reference_id: `refund_claim_${claim.id}`,
         });
 
-        // Mark claim cancelled
         await supabase
           .from('reward_claims')
           .update({
             claim_status: 'cancelled',
             notes: params.reason,
+            cancellation_reason: params.reason,
             updated_at: new Date().toISOString(),
           })
           .eq('id', claim.id);
 
-        // Restore inventory
         const { data: prod } = await supabase
           .from('reward_products')
           .select('stock_quantity')
@@ -1032,6 +1814,10 @@ export class EasyCoinsService {
             })
             .eq('id', claim.reward_product_id);
         }
+
+        const memProd = memoryProducts.find((p) => p.id === claim.reward_product_id);
+        if (memProd) memProd.stock_quantity += 1;
+        savePersistedState({ products: memoryProducts });
       }
     } catch {
       // Fallback
@@ -1041,7 +1827,7 @@ export class EasyCoinsService {
   }
 
   /**
-   * Admin manual adjustment with mandatory reason
+   * Admin manual coin adjustment with mandatory audit reason
    */
   static async adminAdjustCoins(params: {
     customer_id: string;
@@ -1080,6 +1866,7 @@ export class EasyCoinsService {
 
       if (data && !error) {
         memorySettings = { ...memorySettings, ...data };
+        savePersistedState({ settings: memorySettings });
         return memorySettings;
       }
     } catch {
@@ -1087,11 +1874,12 @@ export class EasyCoinsService {
     }
 
     memorySettings = { ...memorySettings, ...settings };
+    savePersistedState({ settings: memorySettings });
     return memorySettings;
   }
 
   /**
-   * Admin product management
+   * Admin Upsert Reward Product with complete metadata, SKU, bundle components, image URL
    */
   static async adminUpsertProduct(product: Partial<RewardProduct>): Promise<RewardProduct> {
     const isNew = !product.id || product.id.startsWith('new-');
@@ -1099,6 +1887,7 @@ export class EasyCoinsService {
 
     const payload: RewardProduct = {
       id: targetId,
+      sku: product.sku || `SKU-${targetId.slice(-6).toUpperCase()}`,
       name: product.name || 'Everyday Essential',
       brand: product.brand || 'Easy Farm',
       category_id: product.category_id || 'cat-1',
@@ -1107,14 +1896,27 @@ export class EasyCoinsService {
       image_url: product.image_url || '/images/rewards/neem-comb.jpg',
       coin_cost: Math.max(1, Number(product.coin_cost) || 10),
       stock_quantity: Math.max(0, Number(product.stock_quantity) || 0),
+      cost_price_inr: Number(product.cost_price_inr) || 0,
+      supplier_name: product.supplier_name || 'Wholesale Depot',
       is_active: product.is_active ?? true,
+      is_archived: product.is_archived ?? false,
+      availability_status:
+        product.availability_status ||
+        (Number(product.stock_quantity) > 0 ? 'available' : 'out_of_stock'),
+      bundle_components: Array.isArray(product.bundle_components)
+        ? product.bundle_components
+        : typeof product.bundle_components === 'string'
+        ? (product.bundle_components as string).split(',').map((s) => s.trim()).filter(Boolean)
+        : [],
       max_claims_per_customer: product.max_claims_per_customer || null,
       max_claims_per_order: product.max_claims_per_order || 1,
       min_order_value: Number(product.min_order_value) || 0,
-      cost_price_inr: Number(product.cost_price_inr) || 0,
-      supplier_name: product.supplier_name || 'Wholesale',
       updated_at: new Date().toISOString(),
     };
+
+    // Category name resolution
+    const cat = memoryCategories.find((c) => c.id === payload.category_id);
+    payload.category_name = cat?.name || 'Essentials';
 
     try {
       const supabase = createAdminClient();
@@ -1124,11 +1926,11 @@ export class EasyCoinsService {
         .select('*, reward_categories(name)')
         .maybeSingle();
 
-      if (data && !error) {
-        payload.category_name = data.reward_categories?.name || 'Essentials';
+      if (data && !error && data.reward_categories?.name) {
+        payload.category_name = data.reward_categories.name;
       }
     } catch {
-      // Fallback
+      // In-memory fallback
     }
 
     const idx = memoryProducts.findIndex((p) => p.id === targetId);
@@ -1138,7 +1940,131 @@ export class EasyCoinsService {
       memoryProducts.unshift(payload);
     }
 
+    savePersistedState({ products: memoryProducts });
     return payload;
+  }
+
+  /**
+   * Safe Deletion / Archival:
+   * If a product is referenced by historical reward claims, archive it safely (is_archived: true, is_active: false)
+   * so historical orders and images are NEVER broken. If no historical claims exist, remove it from the catalog.
+   */
+  static async adminDeleteOrArchiveProduct(productId: string): Promise<{
+    archived: boolean;
+    deleted: boolean;
+    message: string;
+  }> {
+    let hasClaims = false;
+
+    try {
+      const supabase = createAdminClient();
+      const { data: claims } = await supabase
+        .from('reward_claims')
+        .select('id')
+        .eq('reward_product_id', productId)
+        .limit(1);
+
+      if (claims && claims.length > 0) {
+        hasClaims = true;
+      }
+    } catch {
+      // Check memory claims
+    }
+
+    if (!hasClaims) {
+      hasClaims = memoryClaims.some((c) => c.reward_product_id === productId);
+    }
+
+    if (hasClaims) {
+      // Safe archival: Preserves historical records, delivery slips, and image links
+      try {
+        const supabase = createAdminClient();
+        await supabase
+          .from('reward_products')
+          .update({
+            is_archived: true,
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', productId);
+      } catch {}
+
+      const p = memoryProducts.find((item) => item.id === productId);
+      if (p) {
+        p.is_archived = true;
+        p.is_active = false;
+        p.updated_at = new Date().toISOString();
+      }
+      savePersistedState({ products: memoryProducts });
+
+      return {
+        archived: true,
+        deleted: false,
+        message: 'Product is referenced by previous order claims. It has been safely archived from the active customer catalog to protect historical order records.',
+      };
+    }
+
+    // No historical claims: Safe permanent delete
+    try {
+      const supabase = createAdminClient();
+      await supabase.from('reward_products').delete().eq('id', productId);
+    } catch {}
+
+    memoryProducts = memoryProducts.filter((item) => item.id !== productId);
+    savePersistedState({ products: memoryProducts });
+
+    return {
+      archived: false,
+      deleted: true,
+      message: 'Product had no order history and was removed completely from the database.',
+    };
+  }
+
+  /**
+   * Admin Bulk Operations: Update stock or toggle active status across multiple products at once
+   */
+  static async adminBulkUpdateProducts(params: {
+    ids: string[];
+    action: 'activate' | 'deactivate' | 'update_stock';
+    stock_quantity?: number;
+  }): Promise<{ updatedCount: number }> {
+    if (!params.ids || params.ids.length === 0) return { updatedCount: 0 };
+
+    const now = new Date().toISOString();
+    let updatedCount = 0;
+
+    for (const id of params.ids) {
+      const p = memoryProducts.find((item) => item.id === id);
+      if (!p) continue;
+
+      if (params.action === 'activate') {
+        p.is_active = true;
+        p.is_archived = false;
+      } else if (params.action === 'deactivate') {
+        p.is_active = false;
+      } else if (params.action === 'update_stock' && typeof params.stock_quantity === 'number') {
+        p.stock_quantity = Math.max(0, params.stock_quantity);
+        p.availability_status = p.stock_quantity > 0 ? 'available' : 'out_of_stock';
+      }
+      p.updated_at = now;
+      updatedCount++;
+
+      try {
+        const supabase = createAdminClient();
+        await supabase
+          .from('reward_products')
+          .update({
+            is_active: p.is_active,
+            stock_quantity: p.stock_quantity,
+            availability_status: p.availability_status,
+            updated_at: now,
+          })
+          .eq('id', id);
+      } catch {}
+    }
+
+    savePersistedState({ products: memoryProducts });
+    return { updatedCount };
   }
 
   /**
@@ -1173,7 +2099,7 @@ export class EasyCoinsService {
   }
 
   /**
-   * Admin analytics & reports
+   * Admin analytics & liabilities report
    */
   static async getProgramAnalytics(): Promise<{
     total_coins_earned: number;
@@ -1215,7 +2141,6 @@ export class EasyCoinsService {
 
     const outstanding_liability_coins = Math.max(0, total_coins_earned - total_coins_redeemed);
 
-    // Aggregate top claimed rewards
     const map: Record<string, { name: string; count: number; coins: number }> = {};
     for (const c of claims) {
       if (!map[c.reward_name_snapshot]) {
@@ -1239,7 +2164,7 @@ export class EasyCoinsService {
       total_coins_redeemed,
       outstanding_liability_coins,
       total_claims_count: claims.length,
-      active_rewards_count: memoryProducts.filter((p) => p.is_active).length,
+      active_rewards_count: memoryProducts.filter((p) => p.is_active && !p.is_archived).length,
       top_claimed_rewards,
     };
   }

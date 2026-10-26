@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import {
@@ -25,6 +25,14 @@ import {
   DollarSign,
   Truck,
   X,
+  Upload,
+  Archive,
+  CheckSquare,
+  Square,
+  ImageIcon,
+  ArrowUpDown,
+  Tag,
+  Boxes,
 } from 'lucide-react';
 import {
   EasyCoinsSettings,
@@ -59,10 +67,22 @@ export default function AdminEasyCoinsPage() {
   const [products, setProducts] = useState<RewardProduct[]>([]);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'archived'>('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'out_of_stock'>('all');
+  const [sortOption, setSortOption] = useState<'coin_asc' | 'coin_desc' | 'name_asc'>('coin_asc');
 
-  // Product Modal State
+  // Bulk Selection State
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [showBulkStockModal, setShowBulkStockModal] = useState(false);
+  const [bulkStockValue, setBulkStockValue] = useState<number>(50);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
+  // Product Modal & Image Upload State
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<RewardProduct> | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fulfillment State
   const [claims, setClaims] = useState<any[]>([]);
@@ -78,6 +98,7 @@ export default function AdminEasyCoinsPage() {
   const [adjustAmount, setAdjustAmount] = useState<number>(50);
   const [adjustReason, setAdjustReason] = useState<string>('');
 
+  // 1. Data Loader
   const loadAllData = async () => {
     setLoading(true);
     setFeedback(null);
@@ -98,7 +119,7 @@ export default function AdminEasyCoinsPage() {
       if (anaRes.success) setAnalytics(anaRes);
     } catch (err: any) {
       console.error('Failed to load Easy Coins admin data:', err);
-      setFeedback({ type: 'error', message: 'Failed to load initial data. Using default system records.' });
+      setFeedback({ type: 'error', message: 'Failed to load initial data. Using persistent catalog.' });
     } finally {
       setLoading(false);
     }
@@ -108,7 +129,61 @@ export default function AdminEasyCoinsPage() {
     loadAllData();
   }, []);
 
-  // Save Settings Handler
+  // 2. Image Upload Handler (Connects to /api/admin/easy-coins/upload -> Supabase Storage reward-products)
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate size (< 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File is too large. Product images must be under 5MB.');
+      return;
+    }
+
+    // Validate MIME
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      alert('Invalid file format. Only JPG, PNG, and WebP are supported.');
+      return;
+    }
+
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server and Supabase storage
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/admin/easy-coins/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        setEditingProduct((prev) => ({
+          ...prev,
+          image_url: data.url,
+        }));
+        setImagePreview(data.url);
+        setFeedback({ type: 'success', message: 'Image uploaded and linked successfully!' });
+      } else {
+        throw new Error(data.error || 'Upload failed');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Image upload failed. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // 3. Save Settings Handler
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -133,7 +208,7 @@ export default function AdminEasyCoinsPage() {
     }
   };
 
-  // Save Product Handler
+  // 4. Save Product Handler
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct?.name || !editingProduct?.package_size) {
@@ -152,8 +227,9 @@ export default function AdminEasyCoinsPage() {
       if (data.success) {
         setShowProductModal(false);
         setEditingProduct(null);
+        setImagePreview(null);
         await loadAllData();
-        setFeedback({ type: 'success', message: 'Reward product updated in database successfully!' });
+        setFeedback({ type: 'success', message: `Product "${data.product.name}" updated in catalog successfully!` });
       } else {
         throw new Error(data.error);
       }
@@ -164,7 +240,78 @@ export default function AdminEasyCoinsPage() {
     }
   };
 
-  // Customer Search Handler
+  // 5. Delete or Archive Product Handler
+  const handleDeleteOrArchiveProduct = async (product: RewardProduct) => {
+    const confirmMsg = `Are you sure you want to remove "${product.name}" from the active catalog? If it has historical order claims, it will be safely archived to protect order records.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/admin/easy-coins/products?id=${product.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadAllData();
+        setFeedback({
+          type: 'success',
+          message: data.message || `Product ${data.archived ? 'safely archived' : 'removed'} successfully.`,
+        });
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove product.');
+    }
+  };
+
+  // 6. Bulk Operations Handlers
+  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'update_stock', stock_quantity?: number) => {
+    if (selectedProductIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const res = await fetch('/api/admin/easy-coins/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: selectedProductIds,
+          action,
+          stock_quantity,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowBulkStockModal(false);
+        setSelectedProductIds([]);
+        await loadAllData();
+        setFeedback({
+          type: 'success',
+          message: `Bulk update applied to ${data.updatedCount} products successfully!`,
+        });
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Bulk operation failed.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedProductIds.length === filteredProducts.length) {
+      setSelectedProductIds([]);
+    } else {
+      setSelectedProductIds(filteredProducts.map((p) => p.id));
+    }
+  };
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // 7. Customer Search Handler
   const handleSearchCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerSearchQuery.trim()) return;
@@ -186,7 +333,7 @@ export default function AdminEasyCoinsPage() {
     }
   };
 
-  // Manual Adjustment Handler
+  // 8. Manual Adjustment Handler
   const handleManualAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustReason || adjustReason.trim().length < 5) {
@@ -210,7 +357,6 @@ export default function AdminEasyCoinsPage() {
       if (data.success) {
         setShowAdjustModal(false);
         setAdjustReason('');
-        // Refresh customer overview
         const refreshed = await fetch(`/api/easy-coins/balance?customerId=${customerResult?.customerId || customerSearchQuery}`).then((r) => r.json());
         if (refreshed.success) setCustomerResult(refreshed);
         setFeedback({ type: 'success', message: 'Manual coin adjustment recorded to audit ledger.' });
@@ -224,7 +370,7 @@ export default function AdminEasyCoinsPage() {
     }
   };
 
-  // Update Claim Status Handler
+  // 9. Update Claim Status Handler
   const handleUpdateClaimStatus = async (claimId: string, status: string) => {
     try {
       const res = await fetch('/api/admin/easy-coins/claims', {
@@ -243,13 +389,31 @@ export default function AdminEasyCoinsPage() {
     }
   };
 
+  // Filtered & Sorted Products
   const filteredProducts = products.filter((p) => {
     const matchCat = selectedCategory === 'all' || p.category_id === selectedCategory;
     const matchSearch =
       !catalogSearch ||
       p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
-      p.brand?.toLowerCase().includes(catalogSearch.toLowerCase());
-    return matchCat && matchSearch;
+      p.brand?.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+      p.sku?.toLowerCase().includes(catalogSearch.toLowerCase());
+
+    const matchStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' && p.is_active && !p.is_archived) ||
+      (statusFilter === 'inactive' && !p.is_active && !p.is_archived) ||
+      (statusFilter === 'archived' && p.is_archived);
+
+    const matchStock =
+      stockFilter === 'all' ||
+      (stockFilter === 'in_stock' && p.stock_quantity > 0) ||
+      (stockFilter === 'out_of_stock' && p.stock_quantity <= 0);
+
+    return matchCat && matchSearch && matchStatus && matchStock;
+  }).sort((a, b) => {
+    if (sortOption === 'coin_desc') return b.coin_cost - a.coin_cost;
+    if (sortOption === 'name_asc') return a.name.localeCompare(b.name);
+    return a.coin_cost - b.coin_cost;
   });
 
   return (
@@ -264,7 +428,7 @@ export default function AdminEasyCoinsPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  Easy Coins & Rewards System
+                  Easy Coins &amp; Rewards Management
                 </h1>
                 <span
                   className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
@@ -277,7 +441,7 @@ export default function AdminEasyCoinsPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Manage loyalty earning rules, catalog of everyday physical essentials, customer balances, and fulfillment.
+                Manage physical essentials catalog, upload images to Supabase storage, monitor stock, customer balances, and packing fulfillment.
               </p>
             </div>
           </div>
@@ -293,6 +457,7 @@ export default function AdminEasyCoinsPage() {
             </button>
             <button
               onClick={() => {
+                setImagePreview(null);
                 setEditingProduct({
                   name: '',
                   brand: 'Easy Farm',
@@ -300,10 +465,15 @@ export default function AdminEasyCoinsPage() {
                   package_size: '1 Unit',
                   coin_cost: 30,
                   stock_quantity: 50,
-                  is_active: true,
                   cost_price_inr: 25.0,
-                  supplier_name: 'Wholesale',
+                  supplier_name: 'Wholesale Depot',
                   image_url: '/images/rewards/neem-comb.jpg',
+                  is_active: true,
+                  availability_status: 'available',
+                  sku: '',
+                  bundle_components: [],
+                  min_order_value: 0,
+                  max_claims_per_customer: 2,
                 });
                 setShowProductModal(true);
               }}
@@ -342,19 +512,19 @@ export default function AdminEasyCoinsPage() {
         <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl overflow-x-auto shadow-xs">
           <button
             onClick={() => setActiveTab('catalog')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'catalog'
                 ? 'bg-emerald-800 text-white shadow-md'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
             <Gift className="w-4 h-4" />
-            <span>Reward Catalog ({products.length})</span>
+            <span>Reward Products ({products.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('fulfillment')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'fulfillment'
                 ? 'bg-emerald-800 text-white shadow-md'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -366,7 +536,7 @@ export default function AdminEasyCoinsPage() {
 
           <button
             onClick={() => setActiveTab('customers')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'customers'
                 ? 'bg-emerald-800 text-white shadow-md'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -378,7 +548,7 @@ export default function AdminEasyCoinsPage() {
 
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'settings'
                 ? 'bg-emerald-800 text-white shadow-md'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -390,14 +560,14 @@ export default function AdminEasyCoinsPage() {
 
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'analytics'
                 ? 'bg-emerald-800 text-white shadow-md'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
             <TrendingUp className="w-4 h-4" />
-            <span>Analytics & Liabilities</span>
+            <span>Analytics &amp; Liabilities</span>
           </button>
         </div>
 
@@ -405,25 +575,25 @@ export default function AdminEasyCoinsPage() {
         {activeTab === 'catalog' && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
             {/* Filter toolbar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <div className="relative w-full sm:w-80">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 border-b border-slate-100 pb-4">
+              <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Search products or brands..."
+                  placeholder="Search name, brand, SKU..."
                   value={catalogSearch}
                   onChange={(e) => setCatalogSearch(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-emerald-600"
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+              <div>
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none"
                 >
-                  <option value="all">All Categories</option>
+                  <option value="all">All Categories ({categories.length})</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -431,90 +601,226 @@ export default function AdminEasyCoinsPage() {
                   ))}
                 </select>
               </div>
+
+              <div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive / Draft</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={stockFilter}
+                  onChange={(e) => setStockFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none"
+                >
+                  <option value="all">All Stock Levels</option>
+                  <option value="in_stock">In Stock (&gt;0)</option>
+                  <option value="out_of_stock">Out of Stock (0)</option>
+                </select>
+              </div>
+
+              <div>
+                <select
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none"
+                >
+                  <option value="coin_asc">Coin Cost: Low to High</option>
+                  <option value="coin_desc">Coin Cost: High to Low</option>
+                  <option value="name_asc">Product Name: A to Z</option>
+                </select>
+              </div>
             </div>
+
+            {/* BULK ACTIONS BAR */}
+            {selectedProductIds.length > 0 && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-emerald-950 bg-emerald-200/80 px-2.5 py-1 rounded-lg">
+                    {selectedProductIds.length} item{selectedProductIds.length > 1 ? 's' : ''} selected
+                  </span>
+                  <span className="text-slate-500">Perform batch operations across catalog:</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleBulkAction('activate')}
+                    disabled={bulkProcessing}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-800 text-white font-bold hover:bg-emerald-900 transition"
+                  >
+                    Activate Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkAction('deactivate')}
+                    disabled={bulkProcessing}
+                    className="px-3 py-1.5 rounded-lg bg-slate-700 text-white font-bold hover:bg-slate-800 transition"
+                  >
+                    Deactivate Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkStockModal(true)}
+                    disabled={bulkProcessing}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-900 font-bold hover:bg-amber-400 transition"
+                  >
+                    Update Stock Quantity
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProductIds([])}
+                    className="px-2 py-1.5 text-slate-500 hover:text-slate-800"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Products Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
-                    <th className="py-3 px-3">Product</th>
+                    <th className="py-3 px-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredProducts.length > 0 &&
+                          selectedProductIds.length === filteredProducts.length
+                        }
+                        onChange={toggleSelectAll}
+                        className="rounded accent-emerald-700"
+                      />
+                    </th>
+                    <th className="py-3 px-3">Product &amp; Brand</th>
                     <th className="py-3 px-3">Category</th>
-                    <th className="py-3 px-3">Size</th>
+                    <th className="py-3 px-3">Package Size</th>
                     <th className="py-3 px-3 text-right">Coin Cost</th>
-                    <th className="py-3 px-3 text-right">Stock</th>
+                    <th className="py-3 px-3 text-right">Available Stock</th>
                     <th className="py-3 px-3 text-center">Status</th>
                     <th className="py-3 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredProducts.map((prod) => (
-                    <tr key={prod.id} className="hover:bg-slate-50 transition">
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative shrink-0">
-                            <Image
-                              src={prod.image_url || '/images/rewards/neem-comb.jpg'}
-                              alt={prod.name}
-                              fill
-                              sizes="40px"
-                              className="object-cover"
-                              unoptimized
-                            />
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-900 leading-tight">{prod.name}</p>
-                            <p className="text-[10px] text-slate-400">{prod.brand || 'Easy Farm'}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 font-medium">
-                        {prod.category_name || 'Essentials'}
-                      </td>
-                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                        {prod.package_size}
-                      </td>
-                      <td className="py-3 px-3 text-right font-black text-amber-700">
-                        🪙 {prod.coin_cost}
-                      </td>
-                      <td className="py-3 px-3 text-right font-bold">
-                        <span
-                          className={
-                            prod.stock_quantity === 0
-                              ? 'text-red-600'
-                              : prod.stock_quantity < 10
-                              ? 'text-amber-600'
-                              : 'text-slate-800'
-                          }
-                        >
-                          {prod.stock_quantity}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            prod.is_active
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {prod.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingProduct(prod);
-                            setShowProductModal(true);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-emerald-500 text-slate-600 hover:text-emerald-800 text-xs font-bold transition"
-                        >
-                          Edit
-                        </button>
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-slate-400">
+                        No reward products match the selected filters.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredProducts.map((prod) => (
+                      <tr key={prod.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3 px-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductIds.includes(prod.id)}
+                            onChange={() => toggleSelectProduct(prod.id)}
+                            className="rounded accent-emerald-700"
+                          />
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative shrink-0">
+                              <Image
+                                src={prod.image_url || '/images/rewards/neem-comb.jpg'}
+                                alt={prod.name}
+                                fill
+                                sizes="44px"
+                                className="object-cover"
+                                unoptimized
+                              />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900 leading-tight">{prod.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  {prod.brand || 'Easy Farm'}
+                                </span>
+                                {prod.sku && (
+                                  <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1 rounded">
+                                    {prod.sku}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-slate-600 font-medium">
+                          {prod.category_name || 'Essentials'}
+                        </td>
+                        <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
+                          {prod.package_size}
+                        </td>
+                        <td className="py-3 px-3 text-right font-black text-amber-700 text-sm">
+                          🪙 {prod.coin_cost}
+                        </td>
+                        <td className="py-3 px-3 text-right font-bold">
+                          <span
+                            className={`px-2 py-0.5 rounded-md ${
+                              prod.stock_quantity === 0
+                                ? 'bg-rose-100 text-rose-800'
+                                : prod.stock_quantity < 15
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {prod.stock_quantity}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {prod.is_archived ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                              Archived
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                                prod.is_active
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+                              }`}
+                            >
+                              {prod.is_active ? 'Active' : 'Inactive (Draft)'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setImagePreview(prod.image_url || null);
+                                setEditingProduct({ ...prod });
+                                setShowProductModal(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-emerald-600 hover:text-emerald-800 text-slate-700 font-bold text-xs transition"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrArchiveProduct(prod)}
+                              className="p-1.5 rounded-lg border border-slate-200 hover:border-rose-400 hover:text-rose-600 text-slate-400 transition"
+                              title="Archive or safely delete product"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -544,6 +850,7 @@ export default function AdminEasyCoinsPage() {
                 <option value="confirmed">Confirmed</option>
                 <option value="packed">Packed</option>
                 <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
 
@@ -592,6 +899,8 @@ export default function AdminEasyCoinsPage() {
                                   ? 'bg-blue-100 text-blue-800'
                                   : c.claim_status === 'confirmed'
                                   ? 'bg-emerald-100 text-emerald-800'
+                                  : c.claim_status === 'cancelled'
+                                  ? 'bg-rose-100 text-rose-800'
                                   : 'bg-amber-100 text-amber-900'
                               }`}
                             >
@@ -672,7 +981,6 @@ export default function AdminEasyCoinsPage() {
                   </button>
                 </div>
 
-                {/* Recent customer transactions */}
                 <h5 className="text-xs font-bold text-slate-700">Recent Customer Transactions:</h5>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -698,7 +1006,7 @@ export default function AdminEasyCoinsPage() {
                           <td className={`py-2 px-2 text-right font-black ${t.amount > 0 ? 'text-emerald-700' : 'text-amber-800'}`}>
                             {t.amount > 0 ? `+${t.amount}` : t.amount}
                           </td>
-                          <td className="py-2 px-2 text-right font-bold text-slate-900">
+                          <td className="py-2 px-2 text-right font-bold text-slate-800">
                             {t.balance_after}
                           </td>
                         </tr>
@@ -711,125 +1019,93 @@ export default function AdminEasyCoinsPage() {
           </div>
         )}
 
-        {/* ── TAB 4: PROGRAM SETTINGS ──────────────────────────────────────── */}
+        {/* ── TAB 4: PROGRAM RULES & SETTINGS ──────────────────────────────── */}
         {activeTab === 'settings' && (
-          <form onSubmit={handleSaveSettings} className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">
-                  Easy Coins Program Configuration
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Control earning thresholds, conversion rates, and reward limitations.
-                </p>
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-base font-extrabold text-slate-900">
+                Easy Coins Program Configuration
+              </h3>
+              <p className="text-xs text-slate-500">
+                Define the loyalty coin generation algorithm, minimum qualifying order values, and redemption boundaries.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveSettings} className="space-y-5 max-w-2xl">
+              <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <input
+                  type="checkbox"
+                  id="prog_active"
+                  checked={settings.is_enabled}
+                  onChange={(e) => setSettings({ ...settings, is_enabled: e.target.checked })}
+                  className="w-4 h-4 text-emerald-800 rounded border-slate-300 focus:ring-emerald-500"
+                />
+                <label htmlFor="prog_active" className="text-xs font-bold text-slate-900">
+                  Enable Easy Coins Loyalty Program (Customers earn and redeem coins)
+                </label>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold text-slate-700">Program Status:</span>
-                <button
-                  type="button"
-                  onClick={() => setSettings({ ...settings, is_enabled: !settings.is_enabled })}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    settings.is_enabled ? 'bg-emerald-700' : 'bg-slate-300'
-                  }`}
-                >
-                  <span
-                    className={`block w-4 h-4 rounded-full bg-white transition-transform absolute top-1 ${
-                      settings.is_enabled ? 'right-1' : 'left-1'
-                    }`}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Earn Rate (Coins per ₹100 Order)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={settings.earn_rate_per_100_inr}
+                    onChange={(e) => setSettings({ ...settings, earn_rate_per_100_inr: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
                   />
+                  <p className="text-[10px] text-slate-400">Default: 10 coins per ₹100 of vegetable order</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Min Qualifying Order Value (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={settings.min_qualifying_order}
+                    onChange={(e) => setSettings({ ...settings, min_qualifying_order: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                  />
+                  <p className="text-[10px] text-slate-400">Orders below this do not earn or redeem coins</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Max Physical Rewards per Order</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={settings.max_rewards_per_order}
+                    onChange={(e) => setSettings({ ...settings, max_rewards_per_order: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                  />
+                  <p className="text-[10px] text-slate-400">Restricts claims to 1 physical essential per delivery</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Coin Validity (Days)</label>
+                  <input
+                    type="number"
+                    min="30"
+                    value={settings.coin_expiry_days}
+                    onChange={(e) => setSettings({ ...settings, coin_expiry_days: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                  />
+                  <p className="text-[10px] text-slate-400">365 days rolling expiration for unused coins</p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-md transition"
+                >
+                  {saving ? 'Saving...' : 'Save Configuration Rules'}
                 </button>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  Earning Rate (Coins per ₹100 spent)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={settings.earn_rate_per_100_inr}
-                  onChange={(e) =>
-                    setSettings({ ...settings, earn_rate_per_100_inr: Number(e.target.value) })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                />
-                <p className="text-[11px] text-slate-400">
-                  e.g. 10 coins earned for a ₹100 basket.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  Minimum Qualifying Order (₹)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={settings.min_qualifying_order}
-                  onChange={(e) =>
-                    setSettings({ ...settings, min_qualifying_order: Number(e.target.value) })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                />
-                <p className="text-[11px] text-slate-400">
-                  Minimum vegetable subtotal required to award coins.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  Maximum Rewards per Order
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="5"
-                  value={settings.max_rewards_per_order}
-                  onChange={(e) =>
-                    setSettings({ ...settings, max_rewards_per_order: Number(e.target.value) })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                />
-                <p className="text-[11px] text-slate-400">
-                  Standard rule: 1 physical reward product per delivery box.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  Coin Expiration Policy (Days)
-                </label>
-                <input
-                  type="number"
-                  min="30"
-                  max="730"
-                  value={settings.coin_expiry_days}
-                  onChange={(e) =>
-                    setSettings({ ...settings, coin_expiry_days: Number(e.target.value) })
-                  }
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                />
-                <p className="text-[11px] text-slate-400">
-                  Number of days before unredeemed coins expire. Default: 365 days.
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                <span>{saving ? 'Saving...' : 'Save Configuration'}</span>
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         )}
 
         {/* ── TAB 5: ANALYTICS & LIABILITIES ───────────────────────────────── */}
@@ -838,13 +1114,13 @@ export default function AdminEasyCoinsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                  Total Coins Issued
+                  Total Coins Awarded
                 </span>
                 <span className="text-3xl font-black text-emerald-800 mt-2 block">
                   {analytics.total_coins_earned}
                 </span>
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Awarded for vegetable purchases
+                  Lifetime coins earned across all orders
                 </span>
               </div>
 
@@ -907,11 +1183,21 @@ export default function AdminEasyCoinsPage() {
         {/* ── MODAL: ADD / EDIT REWARD PRODUCT ─────────────────────────────── */}
         {showProductModal && editingProduct && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-base font-extrabold text-slate-900">
-                  {editingProduct.id ? 'Edit Reward Product' : 'Add New Reward Product'}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      {editingProduct.id ? 'Edit Reward Product' : 'Add New Reward Product'}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Changes update the live customer catalog instantly without requiring redeployment.
+                    </p>
+                  </div>
+                </div>
                 <button
                   onClick={() => setShowProductModal(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
@@ -921,19 +1207,92 @@ export default function AdminEasyCoinsPage() {
               </div>
 
               <form onSubmit={handleSaveProduct} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Product Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingProduct.name || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                    placeholder="e.g. Dabur Red Ayurvedic Toothpaste"
-                  />
+                {/* IMAGE UPLOAD & PREVIEW SECTION */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Product Image (Upload from Computer)
+                  </label>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="w-24 h-24 rounded-2xl bg-white border border-slate-200 overflow-hidden relative shrink-0 shadow-xs flex items-center justify-center">
+                      {(imagePreview || editingProduct.image_url) ? (
+                        <Image
+                          src={imagePreview || editingProduct.image_url || '/images/rewards/neem-comb.jpg'}
+                          alt="Preview"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-slate-300" />
+                      )}
+                    </div>
+
+                    <div className="space-y-2 w-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleImageFileChange}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingImage}
+                          className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 text-xs font-bold shadow-xs flex items-center gap-2 transition"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>{uploadingImage ? 'Uploading to Supabase...' : (editingProduct.image_url ? 'Replace Image' : 'Upload Image')}</span>
+                        </button>
+
+                        {(imagePreview || editingProduct.image_url) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImagePreview(null);
+                              setEditingProduct({ ...editingProduct, image_url: '' });
+                            }}
+                            className="px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold transition"
+                          >
+                            Remove Image
+                          </button>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] text-slate-500">
+                        Supports JPG, PNG, and WebP up to 5MB. Uploaded directly to Supabase Storage (<code className="text-emerald-700 font-mono">reward-products</code>).
+                      </p>
+
+                      <input
+                        type="text"
+                        value={editingProduct.image_url || ''}
+                        onChange={(e) => {
+                          setEditingProduct({ ...editingProduct, image_url: e.target.value });
+                          setImagePreview(e.target.value);
+                        }}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-[11px] font-mono text-slate-600 focus:outline-none focus:border-emerald-600"
+                        placeholder="Or enter existing image URL / storage path"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* BASIC INFO */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Product Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingProduct.name || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                      placeholder="e.g. Colgate Strong Teeth Toothpaste"
+                    />
+                  </div>
+
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700">Brand Name</label>
                     <input
@@ -941,12 +1300,14 @@ export default function AdminEasyCoinsPage() {
                       value={editingProduct.brand || ''}
                       onChange={(e) => setEditingProduct({ ...editingProduct, brand: e.target.value })}
                       className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
-                      placeholder="e.g. Dabur"
+                      placeholder="e.g. Colgate"
                     />
                   </div>
+                </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Category</label>
+                    <label className="text-xs font-bold text-slate-700">Category *</label>
                     <select
                       value={editingProduct.category_id || categories[0]?.id}
                       onChange={(e) => setEditingProduct({ ...editingProduct, category_id: e.target.value })}
@@ -959,9 +1320,7 @@ export default function AdminEasyCoinsPage() {
                       ))}
                     </select>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700">Package Size *</label>
                     <input
@@ -975,6 +1334,20 @@ export default function AdminEasyCoinsPage() {
                   </div>
 
                   <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Product SKU (Optional)</label>
+                    <input
+                      type="text"
+                      value={editingProduct.sku || ''}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, sku: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-emerald-600"
+                      placeholder="e.g. OC-COL-100"
+                    />
+                  </div>
+                </div>
+
+                {/* PRICING & INVENTORY */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700">Easy Coins Cost *</label>
                     <input
                       type="number"
@@ -982,12 +1355,10 @@ export default function AdminEasyCoinsPage() {
                       min="1"
                       value={editingProduct.coin_cost || 30}
                       onChange={(e) => setEditingProduct({ ...editingProduct, coin_cost: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-black text-amber-700 focus:outline-none focus:border-emerald-600"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700">Available Stock *</label>
                     <input
@@ -996,7 +1367,7 @@ export default function AdminEasyCoinsPage() {
                       min="0"
                       value={editingProduct.stock_quantity ?? 50}
                       onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-600"
                     />
                   </div>
 
@@ -1012,15 +1383,32 @@ export default function AdminEasyCoinsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Image Asset URL</label>
-                  <input
-                    type="text"
-                    value={editingProduct.image_url || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, image_url: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-emerald-600"
-                    placeholder="/images/rewards/product.jpg"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Availability Status</label>
+                    <select
+                      value={editingProduct.availability_status || 'available'}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, availability_status: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                    >
+                      <option value="available">Available (In Stock)</option>
+                      <option value="low_stock">Low Stock Warning</option>
+                      <option value="out_of_stock">Out of Stock</option>
+                      <option value="temporarily_unavailable">Temporarily Unavailable</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Min Qualifying Vegetable Order (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingProduct.min_order_value || 0}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, min_order_value: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-600"
+                      placeholder="0 for any eligible order"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -1030,20 +1418,32 @@ export default function AdminEasyCoinsPage() {
                     value={editingProduct.description || ''}
                     onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-600"
-                    placeholder="Short product overview..."
+                    placeholder="Brief description of product benefits..."
                   />
                 </div>
 
-                <div className="flex items-center gap-2 pt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Bundle Components (Optional for Bundle sets)</label>
+                  <input
+                    type="text"
+                    value={Array.isArray(editingProduct.bundle_components) ? editingProduct.bundle_components.join(', ') : (editingProduct.bundle_components || '')}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, bundle_components: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-emerald-600"
+                    placeholder="e.g. Dabur Red Toothpaste 100g, Colgate ZigZag 2pk"
+                  />
+                  <p className="text-[10px] text-slate-400">Separate included products with commas</p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <input
                     type="checkbox"
                     id="is_active_check"
                     checked={editingProduct.is_active ?? true}
                     onChange={(e) => setEditingProduct({ ...editingProduct, is_active: e.target.checked })}
-                    className="rounded border-slate-300 text-emerald-800 focus:ring-emerald-500"
+                    className="rounded border-slate-300 text-emerald-800 focus:ring-emerald-500 w-4 h-4"
                   />
                   <label htmlFor="is_active_check" className="text-xs font-bold text-slate-800">
-                    Product is active and eligible to be claimed in checkout
+                    Product is Active and eligible to be redeemed in customer checkout
                   </label>
                 </div>
 
@@ -1057,13 +1457,67 @@ export default function AdminEasyCoinsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || uploadingImage}
                     className="px-5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold shadow-md"
                   >
                     {saving ? 'Saving...' : 'Save Reward Product'}
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: BULK STOCK UPDATE ────────────────────────────────────── */}
+        {showBulkStockModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-extrabold text-slate-900">
+                  Bulk Stock Update
+                </h3>
+                <button
+                  onClick={() => setShowBulkStockModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500">
+                  Set available inventory quantity for all {selectedProductIds.length} selected reward products:
+                </p>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Stock Quantity</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={bulkStockValue}
+                    onChange={(e) => setBulkStockValue(Number(e.target.value))}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkStockModal(false)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkAction('update_stock', bulkStockValue)}
+                    disabled={bulkProcessing}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-black shadow-md"
+                  >
+                    {bulkProcessing ? 'Updating...' : 'Apply Stock Update'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

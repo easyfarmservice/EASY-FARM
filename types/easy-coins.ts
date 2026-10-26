@@ -38,6 +38,12 @@ export interface RewardCategory {
   created_at?: string;
 }
 
+export type RewardAvailabilityStatus =
+  | 'available'
+  | 'low_stock'
+  | 'out_of_stock'
+  | 'temporarily_unavailable';
+
 export interface RewardProduct {
   id: string;
   name: string;
@@ -50,6 +56,10 @@ export interface RewardProduct {
   coin_cost: number;
   stock_quantity: number;
   is_active: boolean;
+  is_archived?: boolean;
+  availability_status?: RewardAvailabilityStatus;
+  sku?: string;
+  bundle_components?: string[] | string;
   max_claims_per_customer?: number | null;
   max_claims_per_order: number;
   min_order_value: number;
@@ -77,11 +87,16 @@ export interface RewardClaim {
   customer_id: string;
   reward_product_id: string;
   reward_name_snapshot: string;
+  brand_snapshot?: string;
   package_size_snapshot: string;
+  image_url_snapshot?: string;
   coin_cost_snapshot: number;
   quantity: number;
   claim_status: ClaimFulfillmentStatus;
   notes?: string | null;
+  reserved_at?: string;
+  confirmed_at?: string;
+  cancellation_reason?: string;
   created_at: string;
   updated_at?: string;
   // Joins
