@@ -14,6 +14,8 @@ import dynamic from 'next/dynamic';
 import Script from 'next/script';
 import type { LocationValidationResult } from '@/components/checkout/DeliveryMapPicker';
 import { EasyFarmLoader } from '@/components/ui/EasyFarmLoader';
+import { RewardClaimSelector } from '@/components/rewards/RewardClaimSelector';
+import type { RewardProduct } from '@/types/easy-coins';
 
 const DeliveryMapPicker = dynamic(
   () => import('@/components/checkout/DeliveryMapPicker').then((mod) => mod.DeliveryMapPicker),
@@ -56,6 +58,10 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Easy Coins Reward State
+  const [selectedReward, setSelectedReward] = useState<RewardProduct | null>(null);
+  const [customerCoinBalance, setCustomerCoinBalance] = useState<number>(150);
 
   // Address management states
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -328,6 +334,18 @@ export default function CheckoutPage() {
           }));
           setShowAddForm(true);
         }
+
+        // Fetch customer Easy Coins balance
+        try {
+          const coinUrl = profileId ? `/api/easy-coins/balance?customerId=${profileId}` : '/api/easy-coins/balance';
+          const cRes = await fetch(coinUrl);
+          const cData = await cRes.json();
+          if (cData.success && typeof cData.available_balance === 'number') {
+            setCustomerCoinBalance(cData.available_balance);
+          }
+        } catch (cErr) {
+          console.warn('Coin balance fetch notice:', cErr);
+        }
       } catch (err) {
         console.error('Error initializing checkout address data:', err);
       }
@@ -477,6 +495,7 @@ export default function CheckoutPage() {
             longitude: orderLng,
           },
           couponCode: appliedCouponCode || undefined,
+          claimedRewardId: selectedReward ? selectedReward.id : undefined,
         }),
       });
 
@@ -565,6 +584,7 @@ export default function CheckoutPage() {
                   paymentId: paymentResp.razorpay_payment_id,
                   paymentStatus: 'paid',
                   status: 'confirmed',
+                  claimedReward: selectedReward || data.claimedReward || null,
                   createdAt: new Date().toISOString(),
                 };
 
@@ -968,11 +988,21 @@ export default function CheckoutPage() {
                 </button>
               </div>
             ) : (
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
-                <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-emerald-700" />
-                  Select Payment Method
-                </h2>
+              <div className="space-y-6">
+                {/* EASY COINS REWARD CLAIM SELECTOR */}
+                <RewardClaimSelector
+                  orderSubtotal={serverTotal?.subtotal ?? subtotal}
+                  customerBalance={customerCoinBalance}
+                  selectedReward={selectedReward}
+                  onSelectReward={(rew) => setSelectedReward(rew)}
+                  disabled={loading}
+                />
+
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+                  <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-emerald-700" />
+                    Select Payment Method
+                  </h2>
 
                 <div className="space-y-3">
                   <div className="p-4 border-2 border-emerald-600 bg-emerald-50/50 rounded-2xl flex items-center justify-between">
@@ -1025,7 +1055,8 @@ export default function CheckoutPage() {
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
           </div>
 
           {/* RIGHT SUMMARY */}
@@ -1150,9 +1181,36 @@ export default function CheckoutPage() {
                       </p>
                     )}
 
+                    {/* CLAIMED PHYSICAL REWARD ROW */}
+                    {selectedReward && (
+                      <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300 rounded-2xl flex items-center justify-between text-xs my-1">
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                          <span className="text-base shrink-0">🎁</span>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 truncate leading-tight">{selectedReward.name}</p>
+                            <p className="text-[10px] text-amber-900 font-semibold">{selectedReward.coin_cost} Easy Coins • Delivered Free</p>
+                          </div>
+                        </div>
+                        <span className="font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded text-[11px] border border-emerald-300 shrink-0">
+                          ₹0.00
+                        </span>
+                      </div>
+                    )}
+
                     <div className="border-t border-slate-100 pt-2 flex justify-between text-base font-black text-slate-900">
                       <span>Total Payable</span>
                       <span className="text-emerald-800">₹{displayTotal.toFixed(2)}</span>
+                    </div>
+
+                    {/* EASY COINS EARNED ON ORDER */}
+                    <div className="bg-gradient-to-r from-emerald-50 to-amber-50 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-950 font-bold mt-2">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-sm">🪙</span>
+                        <span>Easy Coins Earned:</span>
+                      </span>
+                      <span className="text-emerald-800 font-black">
+                        +{Math.floor((displaySubtotal / 100) * 10)} Coins
+                      </span>
                     </div>
                   </>
                 )}

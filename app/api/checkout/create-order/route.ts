@@ -7,6 +7,7 @@ import { EmailService } from '@/services/email.service';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit } from '@/lib/security/rate-limit';
+import { EasyCoinsService } from '@/services/easy-coins.service';
 
 const CreateOrderSchema = z.object({
   items: z.array(
@@ -32,6 +33,7 @@ const CreateOrderSchema = z.object({
     longitude: z.number().min(-180).max(180, 'Valid longitude coordinate is required'),
   }),
   couponCode: z.string().optional().nullable(),
+  claimedRewardId: z.string().optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { items, address, couponCode } = parseResult.data;
+    const { items, address, couponCode, claimedRewardId } = parseResult.data;
 
     // 2. CRITICAL BACKEND GEOSPATIAL REVALIDATION
     // Never trust client-provided isServiceable flag or React state.
@@ -214,6 +216,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Handle Easy Coins Reward Claim Reservation (if customer selected a reward)
+    let claimedRewardSnapshot: any = null;
+    if (claimedRewardId) {
+      const reservation = await EasyCoinsService.reserveReward({
+        order_id: orderId,
+        customer_id: customerProfileId || 'guest-customer-default',
+        reward_product_id: claimedRewardId,
+      });
+
+      if (!reservation.success) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: reservation.error || 'Failed to claim reward. Please choose another reward or continue without one.',
+          },
+          { status: 400 }
+        );
+      }
+      claimedRewardSnapshot = reservation.claim;
+    }
+
     // Comprehensive JSON order metadata for Admin Panel & My Orders
     const orderMetadata = {
       orderNumber: orderId,
@@ -229,6 +252,7 @@ export async function POST(req: NextRequest) {
       items: serverPricing.itemsBreakdown,
       deliveryPromise: serviceability.delivery_promise || 'Sunday by 6 PM',
       deliveryZone: serviceability.zone_name || 'Ghatkesar & Pocharam',
+      claimedReward: claimedRewardSnapshot,
     };
 
     // Insert order record
@@ -306,6 +330,7 @@ export async function POST(req: NextRequest) {
       paymentOrder,
       deliveryZone: serviceability.zone_name,
       deliveryPromise: serviceability.delivery_promise,
+      claimedReward: claimedRewardSnapshot,
     });
   } catch (err: any) {
     console.error('Checkout create-order endpoint failure:', err);

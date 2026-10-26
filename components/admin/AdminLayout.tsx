@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, ShoppingBag, Users, Sprout, MapPin, Clock, BarChart3, ShieldCheck, Lock, LogOut, Menu, X, Truck } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Sprout, MapPin, Clock, BarChart3, ShieldCheck, Lock, LogOut, Menu, X, Truck, Gift } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 import { EasyFarmLogo } from '@/components/ui/Logo';
@@ -187,6 +187,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     { href: '/admin/pricing', label: 'Price Edit & Audit', icon: BarChart3 },
     { href: '/admin/discounts', label: 'Discounts Engine', icon: Clock },
     { href: '/admin/coupons', label: 'Coupons & Codes', icon: ShieldCheck },
+    { href: '/admin/easy-coins', label: 'Easy Coins & Rewards', icon: Gift },
     { href: '/admin/delivery-zones', label: 'Delivery Zones & Geofencing', icon: MapPin },
     { href: '/admin/delivery-settings', label: 'Delivery Fees & Cutoff', icon: MapPin },
     { href: '/admin/service-areas', label: 'Service Areas', icon: MapPin },

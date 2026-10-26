@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EmailService } from '@/services/email.service';
+import { EasyCoinsService } from '@/services/easy-coins.service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,6 +20,9 @@ export async function POST(req: NextRequest) {
     const orderId = body.razorpay_order_id || body.order_id;
     const paymentId = body.razorpay_payment_id || body.payment_id;
     const signature = body.razorpay_signature || body.signature;
+
+    let confirmedRewardData: any = null;
+    let coinsEarned = 0;
 
     // Validate missing fields
     if (!orderId || !paymentId || !signature) {
@@ -97,8 +101,8 @@ export async function POST(req: NextRequest) {
       // 2. Mark order as confirmed in database with exact server-side confirmation timestamp
       const confirmedAt = new Date().toISOString();
       const targetQuery = targetDbOrderId
-        ? supabaseAdmin.from('orders').select('id, notes').eq('id', targetDbOrderId).maybeSingle()
-        : supabaseAdmin.from('orders').select('id, notes').ilike('notes', `%${orderId}%`).maybeSingle();
+        ? supabaseAdmin.from('orders').select('id, notes, customer_id').eq('id', targetDbOrderId).maybeSingle()
+        : supabaseAdmin.from('orders').select('id, notes, customer_id').ilike('notes', `%${orderId}%`).maybeSingle();
 
       const { data: ordRecord } = await targetQuery;
       let orderNotes: any = {};
@@ -126,7 +130,38 @@ export async function POST(req: NextRequest) {
           .eq('id', ordRecord.id);
       }
 
-      // 3. Dispatch official Order Confirmation email now that payment has succeeded
+      // 3. Process Easy Coins Loyalty System: Confirm claimed reward & award order coins
+      const appOrderRef = appOrderId || orderNotes.orderNumber || orderId;
+      const customerProfileRef = (ordRecord as any)?.customer_id || orderNotes.customerId || 'guest-customer-default';
+      const orderSubtotal = Number(orderNotes.subtotal || (payRow as any)?.amount || 0);
+
+      // Confirm physical reward claim (atomic coin debit & status confirmed)
+      try {
+        const claimResult = await EasyCoinsService.confirmRewardClaim({
+          order_id: appOrderRef,
+          payment_id: paymentId,
+        });
+        if (claimResult.success && claimResult.claim) {
+          confirmedRewardData = claimResult.claim;
+        }
+      } catch (claimErr) {
+        console.warn('[Easy Coins] Reward claim confirmation notice:', claimErr);
+      }
+
+      // Award Easy Coins for the vegetable purchase (atomic coin credit)
+      try {
+        const earnResult = await EasyCoinsService.awardOrderCoins({
+          order_id: appOrderRef,
+          customer_id: customerProfileRef,
+          eligible_subtotal: orderSubtotal,
+          payment_id: paymentId,
+        });
+        coinsEarned = earnResult.coins_awarded;
+      } catch (earnErr) {
+        console.warn('[Easy Coins] Order coins award notice:', earnErr);
+      }
+
+      // 4. Dispatch official Order Confirmation email now that payment has succeeded
       try {
         const customerEmail = orderNotes.customerEmail || 'customer@example.com';
         const customerName = orderNotes.customerName || 'Valued Resident';
@@ -169,6 +204,8 @@ export async function POST(req: NextRequest) {
       message: 'Payment verified and order confirmed successfully',
       order_id: orderId,
       payment_id: paymentId,
+      coins_earned: coinsEarned,
+      confirmed_reward: confirmedRewardData,
     });
   } catch (err: any) {
     console.error('[Razorpay Verify Error]:', err);

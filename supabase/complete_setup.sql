@@ -15,6 +15,343 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 
 -- ====================================================================
+-- MIGRATION: 002_create_tables-sandeep.sql
+-- ====================================================================
+
+-- Migration 002: Create Tables
+
+-- Roles Enum
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('customer', 'admin', 'farmer', 'delivery_manager');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Order Status Enum
+DO $$ BEGIN
+  CREATE TYPE order_status AS ENUM (
+    'pending_payment',
+    'confirmed',
+    'processing',
+    'packed',
+    'out_for_delivery',
+    'delivered',
+    'cancelled',
+    'failed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Payment Status Enum
+DO $$ BEGIN
+  CREATE TYPE payment_status AS ENUM ('pending', 'captured', 'failed', 'refunded');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1. Profiles Table
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  auth_user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL UNIQUE,
+  role user_role NOT NULL DEFAULT 'customer',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_auth_user_id ON profiles(auth_user_id);
+
+-- 2. Farmers Table
+CREATE TABLE IF NOT EXISTS farmers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  village TEXT NOT NULL,
+  district TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'Telangana',
+  photo_url TEXT,
+  description TEXT,
+  upi_identifier TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. Farmer Documents
+CREATE TABLE IF NOT EXISTS farmer_documents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  farmer_id UUID REFERENCES farmers(id) ON DELETE CASCADE,
+  document_type TEXT NOT NULL,
+  document_url TEXT NOT NULL,
+  verified BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. Product Categories
+CREATE TABLE IF NOT EXISTS product_categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 5. Products Table
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  category_id UUID REFERENCES product_categories(id) ON DELETE SET NULL,
+  price DECIMAL(10,2) NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  image_url TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 6. Baskets Table
+CREATE TABLE IF NOT EXISTS baskets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  image_url TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7. Basket Items
+CREATE TABLE IF NOT EXISTS basket_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  basket_id UUID REFERENCES baskets(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  quantity DECIMAL(10,2) NOT NULL,
+  unit TEXT NOT NULL,
+  UNIQUE(basket_id, product_id)
+);
+
+-- 8. Inventory Table
+CREATE TABLE IF NOT EXISTS inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE UNIQUE,
+  available_quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
+  reserved_quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  low_stock_threshold DECIMAL(10,2) DEFAULT 10,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 9. Delivery Zones (Geofenced with PostGIS)
+CREATE TABLE IF NOT EXISTS delivery_zones (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  city TEXT NOT NULL DEFAULT 'Hyderabad',
+  state TEXT NOT NULL DEFAULT 'Telangana',
+  country TEXT NOT NULL DEFAULT 'India',
+  polygon GEOMETRY(POLYGON, 4326),
+  active BOOLEAN NOT NULL DEFAULT false,
+  delivery_day TEXT NOT NULL DEFAULT 'Sunday',
+  order_cutoff_day TEXT NOT NULL DEFAULT 'Thursday',
+  order_cutoff_time TIME NOT NULL DEFAULT '23:59:50',
+  delivery_promise TEXT NOT NULL DEFAULT 'Before 6 PM Sunday',
+  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  minimum_order DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index for Spatial Polygon Querying
+CREATE INDEX IF NOT EXISTS delivery_zones_polygon_idx ON delivery_zones USING GIST (polygon);
+
+-- 10. Delivery Areas
+CREATE TABLE IF NOT EXISTS delivery_areas (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  zone_id UUID REFERENCES delivery_zones(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  pincodes TEXT[] NOT NULL DEFAULT '{}',
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 11. Delivery Locations (Gated Communities/Apartments)
+CREATE TABLE IF NOT EXISTS delivery_locations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  area_id UUID REFERENCES delivery_areas(id) ON DELETE CASCADE,
+  building_name TEXT NOT NULL,
+  address TEXT NOT NULL,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 12. Customer Addresses
+CREATE TABLE IF NOT EXISTS customer_addresses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  label TEXT DEFAULT 'Home',
+  full_address TEXT NOT NULL,
+  apartment TEXT,
+  locality TEXT NOT NULL,
+  city TEXT NOT NULL DEFAULT 'Hyderabad',
+  state TEXT NOT NULL DEFAULT 'Telangana',
+  pincode TEXT NOT NULL,
+  latitude DOUBLE PRECISION NOT NULL,
+  longitude DOUBLE PRECISION NOT NULL,
+  delivery_zone_id UUID REFERENCES delivery_zones(id),
+  delivery_area_id UUID REFERENCES delivery_areas(id),
+  delivery_location_id UUID REFERENCES delivery_locations(id),
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 13. Orders Table
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_id UUID REFERENCES profiles(id) ON DELETE RESTRICT,
+  address_id UUID REFERENCES customer_addresses(id),
+  delivery_zone_id UUID REFERENCES delivery_zones(id),
+  delivery_area_id UUID REFERENCES delivery_areas(id),
+  delivery_location_id UUID REFERENCES delivery_locations(id),
+  status order_status NOT NULL DEFAULT 'pending_payment',
+  subtotal DECIMAL(10,2) NOT NULL,
+  delivery_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+  total DECIMAL(10,2) NOT NULL,
+  delivery_date DATE NOT NULL,
+  order_window_start TIMESTAMPTZ,
+  order_window_end TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 14. Order Items
+CREATE TABLE IF NOT EXISTS order_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  basket_id UUID REFERENCES baskets(id),
+  basket_name TEXT NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_price DECIMAL(10,2) NOT NULL,
+  total_price DECIMAL(10,2) NOT NULL
+);
+
+-- 15. Payments Table
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE UNIQUE,
+  provider TEXT NOT NULL DEFAULT 'razorpay',
+  provider_order_id TEXT,
+  provider_payment_id TEXT,
+  amount DECIMAL(10,2) NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'INR',
+  status payment_status NOT NULL DEFAULT 'pending',
+  method TEXT,
+  verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 16. Deliveries Table
+CREATE TABLE IF NOT EXISTS deliveries (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE UNIQUE,
+  status order_status NOT NULL DEFAULT 'confirmed',
+  assigned_to UUID REFERENCES profiles(id),
+  estimated_time TIMESTAMPTZ,
+  actual_time TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 17. Waitlist Table
+CREATE TABLE IF NOT EXISTS waitlist (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  locality TEXT NOT NULL,
+  apartment TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(email, pincode)
+);
+
+-- 18. Farmer Payments Transparency Table
+CREATE TABLE IF NOT EXISTS farmer_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  farmer_id UUID REFERENCES farmers(id) ON DELETE CASCADE,
+  produce TEXT NOT NULL,
+  quantity DECIMAL(10,2) NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  rate DECIMAL(10,2) NOT NULL,
+  benchmark_rate DECIMAL(10,2) NOT NULL,
+  farmer_rate DECIMAL(10,2) NOT NULL,
+  payment_amount DECIMAL(10,2) NOT NULL,
+  payment_reference TEXT NOT NULL,
+  payment_date DATE NOT NULL,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 19. Testimonials Table
+CREATE TABLE IF NOT EXISTS testimonials (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_name TEXT NOT NULL,
+  content TEXT NOT NULL,
+  rating INT NOT NULL DEFAULT 5,
+  location TEXT NOT NULL DEFAULT 'Gachibowli',
+  verified BOOLEAN NOT NULL DEFAULT false,
+  is_demo BOOLEAN NOT NULL DEFAULT false,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 20. Admin Users Table
+CREATE TABLE IF NOT EXISTS admin_users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE,
+  permissions JSONB NOT NULL DEFAULT '{"all": true}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 21. Notifications Table
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  read BOOLEAN NOT NULL DEFAULT false,
+  data JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 22. Transparency Records (for QR Verification)
+CREATE TABLE IF NOT EXISTS transparency_records (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+  farmer_payment_id UUID REFERENCES farmer_payments(id) ON DELETE CASCADE,
+  public_token TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ====================================================================
 -- MIGRATION: 002_create_tables.sql
 -- ====================================================================
 
@@ -352,6 +689,213 @@ CREATE TABLE IF NOT EXISTS transparency_records (
 
 
 -- ====================================================================
+-- MIGRATION: 003_rls_policies-sandeep.sql
+-- ====================================================================
+
+-- Migration 003: Row Level Security (RLS) Policies
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farmers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farmer_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE baskets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE basket_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_zones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_areas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customer_addresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE deliveries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE waitlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE farmer_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE testimonials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transparency_records ENABLE ROW LEVEL SECURITY;
+
+-- Helper function to check if auth user is an admin
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  IF current_user IN ('postgres', 'supabase_admin') OR auth.role() = 'service_role' THEN
+    RETURN TRUE;
+  END IF;
+
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  RETURN EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.auth_user_id = auth.uid() AND p.role = 'admin'
+  ) OR EXISTS (
+    SELECT 1 FROM profiles p
+    JOIN admin_users a ON a.profile_id = p.id
+    WHERE p.auth_user_id = auth.uid()
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp;
+
+-- Profiles Policies
+DROP POLICY IF EXISTS "Public profiles are readable by owner or admin" ON profiles;
+CREATE POLICY "Public profiles are readable by owner or admin"
+  ON profiles FOR SELECT
+  USING (auth.uid() = auth_user_id OR is_admin());
+
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+CREATE POLICY "Users can update own profile"
+  ON profiles FOR UPDATE
+  USING (auth.uid() = auth_user_id);
+
+DROP POLICY IF EXISTS "Admins can manage all profiles" ON profiles;
+CREATE POLICY "Admins can manage all profiles"
+  ON profiles FOR ALL
+  USING (is_admin());
+
+-- Farmers Policies
+DROP POLICY IF EXISTS "Public can view active farmers" ON farmers;
+CREATE POLICY "Public can view active farmers"
+  ON farmers FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage farmers" ON farmers;
+CREATE POLICY "Admins can manage farmers"
+  ON farmers FOR ALL
+  USING (is_admin());
+
+-- Products & Categories Policies
+DROP POLICY IF EXISTS "Public can view active categories" ON product_categories;
+CREATE POLICY "Public can view active categories"
+  ON product_categories FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Public can view active products" ON products;
+CREATE POLICY "Public can view active products"
+  ON products FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage products" ON products;
+CREATE POLICY "Admins can manage products"
+  ON products FOR ALL
+  USING (is_admin());
+
+-- Baskets & Items Policies
+DROP POLICY IF EXISTS "Public can view active baskets" ON baskets;
+CREATE POLICY "Public can view active baskets"
+  ON baskets FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Public can view basket items" ON basket_items;
+CREATE POLICY "Public can view basket items"
+  ON basket_items FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins can manage baskets" ON baskets;
+CREATE POLICY "Admins can manage baskets"
+  ON baskets FOR ALL
+  USING (is_admin());
+
+-- Delivery Zones / Areas / Locations
+DROP POLICY IF EXISTS "Public can view active delivery zones" ON delivery_zones;
+CREATE POLICY "Public can view active delivery zones"
+  ON delivery_zones FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Public can view active delivery areas" ON delivery_areas;
+CREATE POLICY "Public can view active delivery areas"
+  ON delivery_areas FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Public can view active delivery locations" ON delivery_locations;
+CREATE POLICY "Public can view active delivery locations"
+  ON delivery_locations FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage delivery hierarchy" ON delivery_zones;
+CREATE POLICY "Admins can manage delivery hierarchy"
+  ON delivery_zones FOR ALL USING (is_admin());
+
+-- Customer Addresses Policies
+DROP POLICY IF EXISTS "Customers can manage own addresses" ON customer_addresses;
+CREATE POLICY "Customers can manage own addresses"
+  ON customer_addresses FOR ALL
+  USING (customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid()) OR is_admin())
+  WITH CHECK (customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid()) OR is_admin());
+
+-- Orders & Order Items Policies
+DROP POLICY IF EXISTS "Customers can view own orders" ON orders;
+CREATE POLICY "Customers can view own orders"
+  ON orders FOR SELECT
+  USING (customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid()) OR is_admin());
+
+DROP POLICY IF EXISTS "Customers can insert own orders" ON orders;
+CREATE POLICY "Customers can insert own orders"
+  ON orders FOR INSERT
+  WITH CHECK (
+    customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
+    AND status = 'pending_payment'
+  );
+
+DROP POLICY IF EXISTS "Admins can manage all orders" ON orders;
+CREATE POLICY "Admins can manage all orders"
+  ON orders FOR ALL
+  USING (is_admin());
+
+DROP POLICY IF EXISTS "Customers can view own order items" ON order_items;
+CREATE POLICY "Customers can view own order items"
+  ON order_items FOR SELECT
+  USING (order_id IN (
+    SELECT id FROM orders WHERE customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
+  ) OR is_admin());
+
+-- Payments Policies
+DROP POLICY IF EXISTS "Customers can view own payments" ON payments;
+CREATE POLICY "Customers can view own payments"
+  ON payments FOR SELECT
+  USING (order_id IN (
+    SELECT id FROM orders WHERE customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
+  ) OR is_admin());
+
+-- Waitlist Policies
+DROP POLICY IF EXISTS "Anyone can join waitlist" ON waitlist;
+CREATE POLICY "Anyone can join waitlist"
+  ON waitlist FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admins can view waitlist" ON waitlist;
+CREATE POLICY "Admins can view waitlist"
+  ON waitlist FOR SELECT
+  USING (is_admin());
+
+-- Testimonials Policies
+DROP POLICY IF EXISTS "Public can view active testimonials" ON testimonials;
+CREATE POLICY "Public can view active testimonials"
+  ON testimonials FOR SELECT
+  USING (active = true OR is_admin());
+
+DROP POLICY IF EXISTS "Admins can manage testimonials" ON testimonials;
+CREATE POLICY "Admins can manage testimonials"
+  ON testimonials FOR ALL
+  USING (is_admin());
+
+-- Transparency Records
+DROP POLICY IF EXISTS "Public can view transparency records" ON transparency_records;
+CREATE POLICY "Public can view transparency records"
+  ON transparency_records FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Public can view farmer payments linked to transparency" ON farmer_payments;
+CREATE POLICY "Public can view farmer payments linked to transparency"
+  ON farmer_payments FOR SELECT
+  USING (true);
+
+
+-- ====================================================================
 -- MIGRATION: 003_rls_policies.sql
 -- ====================================================================
 
@@ -556,6 +1100,101 @@ DROP POLICY IF EXISTS "Public can view farmer payments linked to transparency" O
 CREATE POLICY "Public can view farmer payments linked to transparency"
   ON farmer_payments FOR SELECT
   USING (true);
+
+
+-- ====================================================================
+-- MIGRATION: 004_functions-sandeep.sql
+-- ====================================================================
+
+-- Migration 004: Stored Procedures & Functions
+
+-- 1. Function: Check delivery serviceability via PostGIS polygon or exact location match
+CREATE OR REPLACE FUNCTION check_delivery_availability(
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION
+)
+RETURNS TABLE (
+  available BOOLEAN,
+  zone_id UUID,
+  zone_name TEXT,
+  area_id UUID,
+  area_name TEXT,
+  delivery_fee DECIMAL(10,2),
+  minimum_order DECIMAL(10,2),
+  delivery_day TEXT,
+  delivery_promise TEXT
+) AS $$
+DECLARE
+  point GEOMETRY;
+  found_zone RECORD;
+  found_area RECORD;
+BEGIN
+  -- Create PostGIS Point (EPSG:4326 - WGS 84)
+  point := ST_SetSRID(ST_MakePoint(lng, lat), 4326);
+
+  -- Check if coordinates fall within any active delivery zone polygon
+  SELECT z.id, z.name, z.delivery_fee, z.minimum_order, z.delivery_day, z.delivery_promise
+  INTO found_zone
+  FROM delivery_zones z
+  WHERE z.active = true
+    AND ST_Covers(z.polygon, point)
+  LIMIT 1;
+
+  IF found_zone.id IS NOT NULL THEN
+    -- Find corresponding area within zone
+    SELECT a.id, a.name INTO found_area
+    FROM delivery_areas a
+    WHERE a.zone_id = found_zone.id AND a.active = true
+    LIMIT 1;
+
+    RETURN QUERY SELECT
+      true AS available,
+      found_zone.id AS zone_id,
+      found_zone.name AS zone_name,
+      found_area.id AS area_id,
+      found_area.name AS area_name,
+      found_zone.delivery_fee,
+      found_zone.minimum_order,
+      found_zone.delivery_day,
+      found_zone.delivery_promise;
+  ELSE
+    RETURN QUERY SELECT
+      false AS available,
+      NULL::UUID AS zone_id,
+      NULL::TEXT AS zone_name,
+      NULL::UUID AS area_id,
+      NULL::TEXT AS area_name,
+      0.00::DECIMAL(10,2) AS delivery_fee,
+      0.00::DECIMAL(10,2) AS minimum_order,
+      ''::TEXT AS delivery_day,
+      ''::TEXT AS delivery_promise;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp;
+
+-- 2. Trigger Function: Automatically create Profile on Auth Signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (auth_user_id, full_name, phone, email, role)
+  VALUES (
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'full_name', 'Customer'),
+    COALESCE(new.raw_user_meta_data->>'phone', ''),
+    new.email,
+    'customer'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp;
+
+-- Bind Trigger to auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
 
 -- ====================================================================
@@ -1466,6 +2105,244 @@ DROP POLICY IF EXISTS "Admins manage substitutions" ON product_substitutions;
 CREATE POLICY "Admins manage substitutions"
   ON product_substitutions FOR ALL
   USING (is_admin());
+
+
+-- ====================================================================
+-- MIGRATION: 011_easy_coins_system.sql
+-- ====================================================================
+
+-- ====================================================================
+-- MIGRATION 011: EASY COINS REWARDS SYSTEM
+-- Loyalty & Physical Rewards Program for Easy Farm (easyfarm.co.in)
+-- ====================================================================
+
+-- 1. REWARD CATEGORIES TABLE
+CREATE TABLE IF NOT EXISTS reward_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  icon TEXT,
+  sort_order INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. REWARD PRODUCTS TABLE (Physical Essentials)
+CREATE TABLE IF NOT EXISTS reward_products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  brand TEXT,
+  category_id UUID REFERENCES reward_categories(id) ON DELETE SET NULL,
+  description TEXT,
+  package_size TEXT NOT NULL,
+  image_url TEXT,
+  coin_cost INTEGER NOT NULL CHECK (coin_cost > 0),
+  stock_quantity INTEGER NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+  is_active BOOLEAN DEFAULT true,
+  max_claims_per_customer INTEGER DEFAULT NULL,
+  max_claims_per_order INTEGER DEFAULT 1,
+  min_order_value DECIMAL(10,2) DEFAULT 0.00,
+  cost_price_inr DECIMAL(10,2) DEFAULT 0.00,
+  supplier_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. EASY COINS SETTINGS TABLE (Configurable Program Rules)
+CREATE TABLE IF NOT EXISTS easy_coins_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  is_enabled BOOLEAN DEFAULT true,
+  earn_rate_per_100_inr INTEGER DEFAULT 10,
+  min_qualifying_order DECIMAL(10,2) DEFAULT 100.00,
+  max_rewards_per_order INTEGER DEFAULT 1,
+  coin_expiry_days INTEGER DEFAULT 365,
+  bonus_first_order_coins INTEGER DEFAULT 20,
+  bonus_repeat_order_coins INTEGER DEFAULT 0,
+  allow_promotions BOOLEAN DEFAULT true,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. EASY COINS TRANSACTION LEDGER (Auditable Atomic Ledger)
+CREATE TABLE IF NOT EXISTS easy_coins_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL, -- Positive for credits (earn/reverse), negative for debits (spend)
+  balance_after INTEGER NOT NULL,
+  transaction_type TEXT NOT NULL CHECK (
+    transaction_type IN ('earned_order', 'redeemed_reward', 'reversed_cancellation', 'admin_adjustment', 'expired', 'bonus_promo')
+  ),
+  description TEXT NOT NULL,
+  reference_id TEXT, -- E.g. payment_id or admin email
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. REWARD CLAIMS TABLE (Linked to Orders & Delivery)
+CREATE TABLE IF NOT EXISTS reward_claims (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  reward_product_id UUID NOT NULL REFERENCES reward_products(id) ON DELETE RESTRICT,
+  reward_name_snapshot TEXT NOT NULL,
+  package_size_snapshot TEXT NOT NULL,
+  coin_cost_snapshot INTEGER NOT NULL,
+  quantity INTEGER DEFAULT 1 CHECK (quantity > 0),
+  claim_status TEXT NOT NULL DEFAULT 'reserved' CHECK (
+    claim_status IN ('reserved', 'confirmed', 'packed', 'delivered', 'cancelled', 'released')
+  ),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for lightning fast lookups
+CREATE INDEX IF NOT EXISTS idx_reward_products_category ON reward_products(category_id);
+CREATE INDEX IF NOT EXISTS idx_reward_products_active ON reward_products(is_active);
+CREATE INDEX IF NOT EXISTS idx_easy_coins_ledger_customer ON easy_coins_ledger(customer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_easy_coins_ledger_order ON easy_coins_ledger(order_id);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_order ON reward_claims(order_id);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_customer ON reward_claims(customer_id);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_status ON reward_claims(claim_status);
+
+-- ====================================================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ====================================================================
+ALTER TABLE reward_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE easy_coins_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE easy_coins_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_claims ENABLE ROW LEVEL SECURITY;
+
+-- 1. Reward Categories & Products: Public read for active, admin full access
+DROP POLICY IF EXISTS "Public can view active reward categories" ON reward_categories;
+CREATE POLICY "Public can view active reward categories"
+  ON reward_categories FOR SELECT
+  USING (is_active = true OR (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin')));
+
+DROP POLICY IF EXISTS "Admins have full access to reward categories" ON reward_categories;
+CREATE POLICY "Admins have full access to reward categories"
+  ON reward_categories FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'));
+
+DROP POLICY IF EXISTS "Public can view active reward products" ON reward_products;
+CREATE POLICY "Public can view active reward products"
+  ON reward_products FOR SELECT
+  USING (is_active = true OR (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin')));
+
+DROP POLICY IF EXISTS "Admins have full access to reward products" ON reward_products;
+CREATE POLICY "Admins have full access to reward products"
+  ON reward_products FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'));
+
+-- 2. Easy Coins Settings: Public read, Admin manage
+DROP POLICY IF EXISTS "Public can view easy coins settings" ON easy_coins_settings;
+CREATE POLICY "Public can view easy coins settings"
+  ON easy_coins_settings FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins can manage easy coins settings" ON easy_coins_settings;
+CREATE POLICY "Admins can manage easy coins settings"
+  ON easy_coins_settings FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'));
+
+-- 3. Easy Coins Ledger: Customer views own, Admin views all
+DROP POLICY IF EXISTS "Customers view own easy coins ledger" ON easy_coins_ledger;
+CREATE POLICY "Customers view own easy coins ledger"
+  ON easy_coins_ledger FOR SELECT
+  USING (
+    customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
+    OR (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'))
+  );
+
+-- 4. Reward Claims: Customer views own, Admin views all
+DROP POLICY IF EXISTS "Customers view own reward claims" ON reward_claims;
+CREATE POLICY "Customers view own reward claims"
+  ON reward_claims FOR SELECT
+  USING (
+    customer_id IN (SELECT id FROM profiles WHERE auth_user_id = auth.uid())
+    OR (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'))
+  );
+
+DROP POLICY IF EXISTS "Admins can manage reward claims" ON reward_claims;
+CREATE POLICY "Admins can manage reward claims"
+  ON reward_claims FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE profiles.auth_user_id = auth.uid() AND profiles.role = 'admin'));
+
+-- ====================================================================
+-- SEED DATA (Genuine Lawful Essentials Catalog & Initial Settings)
+-- ====================================================================
+
+-- Insert Default Settings
+INSERT INTO easy_coins_settings (is_enabled, earn_rate_per_100_inr, min_qualifying_order, max_rewards_per_order, coin_expiry_days, bonus_first_order_coins)
+SELECT true, 10, 100.00, 1, 365, 20
+WHERE NOT EXISTS (SELECT 1 FROM easy_coins_settings);
+
+-- Insert Reward Categories
+INSERT INTO reward_categories (name, slug, description, icon, sort_order)
+VALUES
+  ('Oral Care', 'oral-care', 'Toothpastes, brushes and dental essentials', 'Sparkles', 1),
+  ('Bath & Personal Care', 'bath-personal-care', 'Soaps, shampoos and hair care', 'Smile', 2),
+  ('Household Cleaning', 'household-cleaning', 'Dishwash bars, detergents and scrubbers', 'Shield', 3),
+  ('Kitchen Essentials', 'kitchen-essentials', 'Food bags, kitchen wipes and reusable bags', 'Package', 4),
+  ('Daily Personal Essentials', 'daily-personal-essentials', 'Combs, tissues and personal hygiene', 'Heart', 5),
+  ('Everyday Utility', 'everyday-utility', 'Pens, notebooks, batteries and stationery', 'Compass', 6),
+  ('Family Essentials Bundles', 'family-bundles', 'Curated bundles of high-use everyday products', 'Gift', 7)
+ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
+
+-- Insert Genuine Everyday Reward Products
+DO $$
+DECLARE
+  cat_oral UUID;
+  cat_bath UUID;
+  cat_clean UUID;
+  cat_kitchen UUID;
+  cat_personal UUID;
+  cat_utility UUID;
+  cat_bundle UUID;
+BEGIN
+  SELECT id INTO cat_oral FROM reward_categories WHERE slug = 'oral-care';
+  SELECT id INTO cat_bath FROM reward_categories WHERE slug = 'bath-personal-care';
+  SELECT id INTO cat_clean FROM reward_categories WHERE slug = 'household-cleaning';
+  SELECT id INTO cat_kitchen FROM reward_categories WHERE slug = 'kitchen-essentials';
+  SELECT id INTO cat_personal FROM reward_categories WHERE slug = 'daily-personal-essentials';
+  SELECT id INTO cat_utility FROM reward_categories WHERE slug = 'everyday-utility';
+  SELECT id INTO cat_bundle FROM reward_categories WHERE slug = 'family-bundles';
+
+  -- Oral Care
+  INSERT INTO reward_products (name, brand, category_id, description, package_size, image_url, coin_cost, stock_quantity, cost_price_inr, supplier_name)
+  VALUES
+    ('Dabur Red Ayurvedic Toothpaste', 'Dabur', cat_oral, 'Traditional herbal ayurvedic toothpaste for complete dental protection.', '100g Tube', '/images/rewards/dabur-red.jpg', 40, 50, 42.00, 'Direct Wholesale'),
+    ('Colgate ZigZag Deep Clean Toothbrushes', 'Colgate', cat_oral, 'Multi-angle cross bristles for deep interdental plaque removal.', 'Pack of 2', '/images/rewards/colgate-zigzag.jpg', 35, 60, 36.00, 'Direct Wholesale'),
+    
+    -- Bath & Personal Care
+    ('Medimix 18 Herbs Ayurvedic Bathing Soap', 'Medimix', cat_bath, 'Nourishing herbal formulation proven to prevent blemishes and skin dryness.', '125g Bar', '/images/rewards/medimix-soap.jpg', 30, 75, 32.00, 'Direct Wholesale'),
+    ('Dettol Original Germ Protection Bathing Soap', 'Dettol', cat_bath, 'Trusted antibacterial protection for the whole family.', '75g x 3 Multipack', '/images/rewards/dettol-multipack.jpg', 75, 40, 85.00, 'Direct Wholesale'),
+    ('Parachute 100% Pure Coconut Hair Oil', 'Parachute', cat_bath, 'Naturally filtered pure coconut oil for nourishment and scalp health.', '100ml Bottle', '/images/rewards/parachute-oil.jpg', 45, 55, 46.00, 'Direct Wholesale'),
+
+    -- Household Cleaning
+    ('Vim Lemon Dishwash Bar with Polycoat', 'Vim', cat_clean, 'Cuts tough grease from stainless steel utensils and ceramic cookware.', '200g Bar', '/images/rewards/vim-bar.jpg', 25, 90, 22.00, 'Direct Wholesale'),
+    ('Scotch-Brite Heavy Duty Scrub Pad', 'Scotch-Brite', cat_clean, 'Durable fiber scrub pads with superior stain removing efficiency.', 'Pack of 3', '/images/rewards/scotch-brite.jpg', 35, 70, 35.00, 'Direct Wholesale'),
+    ('Surf Excel Easy Wash Detergent Powder', 'Surf Excel', cat_clean, 'Superior stain removal technology in bucket wash for everyday laundry.', '500g Pack', '/images/rewards/surf-excel.jpg', 65, 45, 70.00, 'Direct Wholesale'),
+
+    -- Kitchen Essentials
+    ('Reusable Heavy-Duty Cotton Grocery Carry Bag', 'Easy Farm Eco', cat_kitchen, '100% biodegradable unbleached cotton bag with reinforced carrying handles.', 'Standard 15L', '/images/rewards/cotton-bag.jpg', 50, 80, 48.00, 'Local Artisan Guild'),
+    ('Multipurpose Cotton Kitchen Wipes', 'CleanHome', cat_kitchen, 'Ultra-absorbent lint-free cotton towels for wiping counters and dishes.', 'Pack of 2', '/images/rewards/kitchen-wipes.jpg', 40, 65, 38.00, 'Direct Wholesale'),
+
+    -- Daily Personal Essentials
+    ('Handcrafted Neem Wood Pocket Comb', 'PureRoots', cat_personal, 'Anti-static organic neem wood comb that prevents dandruff and detangles gently.', '1 Piece', '/images/rewards/neem-comb.jpg', 30, 60, 28.00, 'Telangana Handicrafts'),
+    ('Origami Soft 3-Ply Pocket Tissues', 'Origami', cat_personal, 'Gentle on skin, compact travel-friendly pocket tissue packs.', 'Pack of 6', '/images/rewards/pocket-tissues.jpg', 25, 80, 24.00, 'Direct Wholesale'),
+
+    -- Everyday Utility
+    ('Duracell Chota Power AAA Alkaline Batteries', 'Duracell', cat_utility, 'Long-lasting power for TV remotes, kitchen weighing scales and clocks.', 'Pack of 2', '/images/rewards/duracell-aaa.jpg', 40, 50, 44.00, 'Direct Wholesale'),
+    ('Classmate Pulse Spiral Bound Long Notebook', 'Classmate', cat_utility, 'Single lined 160 pages notebook with smooth chlorine-free paper.', '160 Pages', '/images/rewards/classmate-notebook.jpg', 45, 40, 45.00, 'Direct Wholesale'),
+
+    -- Bundles
+    ('Morning Freshness & Oral Care Bundle', 'Easy Farm Essentials', cat_bundle, 'Includes Dabur Red Ayurvedic Toothpaste (100g) and Colgate ZigZag (Pack of 2).', '2 Products', '/images/rewards/oral-bundle.jpg', 70, 30, 75.00, 'In-house Packaged'),
+    ('Pure Hygiene Bath & Kitchen Care Bundle', 'Easy Farm Essentials', cat_bundle, 'Includes Medimix 125g Soap, Vim 200g Dishwash Bar, and Scotch-Brite (Pack of 3).', '3 Products', '/images/rewards/hygiene-bundle.jpg', 80, 30, 88.00, 'In-house Packaged')
+  ON CONFLICT DO NOTHING;
+END $$;
 
 -- ====================================================================
 -- PROVISION INITIAL ADMIN PROFILE

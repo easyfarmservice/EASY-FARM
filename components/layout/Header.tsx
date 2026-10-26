@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import { EasyFarmLogo } from '@/components/ui/Logo';
 import { LocationPickerTrigger } from '@/components/location/LocationPicker';
 import { SanityService } from '@/services/sanity.service';
+import { EasyCoinsBadge } from '@/components/rewards/EasyCoinsBadge';
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -168,6 +169,7 @@ export function Header() {
           {/* DYNAMIC ACCOUNT / ADMIN / LOGIN BUTTON */}
           {isLoggedIn ? (
             <div className="flex items-center gap-2 shrink-0">
+              <EasyCoinsBadge />
               {isAdmin && (
                 <Link
                   href="/admin"
@@ -243,6 +245,15 @@ export function Header() {
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
             Delivery Area
+          </Link>
+
+          <Link
+            href="/account?tab=coins"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center justify-between py-2.5 px-3 rounded-lg text-amber-800 bg-amber-50/80 font-bold border border-amber-200"
+          >
+            <span>🪙 Easy Coins Rewards</span>
+            <span className="text-xs bg-amber-400 text-emerald-950 font-black px-2 py-0.5 rounded-full">Active</span>
           </Link>
 
           {isLoggedIn ? (

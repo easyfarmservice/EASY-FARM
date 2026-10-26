@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   MapPin,
   Package,
@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   Clock,
   AlertCircle,
+  Coins,
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -31,6 +32,7 @@ import { createClient } from '@/lib/supabase/client';
 import { EasyFarmLoader } from '@/components/ui/EasyFarmLoader';
 import { getNextDeliveryDate, LAUNCH_ZONE } from '@/lib/constants';
 import { clearLegacyGlobalAddresses } from '@/lib/utils/address';
+import { EasyCoinsAccountTab } from '@/components/account/EasyCoinsAccountTab';
 
 interface ProfileData {
   id: string;
@@ -96,14 +98,16 @@ const CONFIRMED_ACTIVE_STATUSES = [
 
 export default function AccountPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'coins' ? 'coins' : 'orders';
 
   // Page Loading & Feedback States
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Concept 2: Segmented Tabs State
-  const [activeTab, setActiveTab] = useState<'orders' | 'addresses' | 'settings'>('orders');
+  // Concept 2: Segmented Tabs State (Orders, Easy Coins, Addresses, Settings)
+  const [activeTab, setActiveTab] = useState<'orders' | 'coins' | 'addresses' | 'settings'>(initialTab);
 
   // Dynamic Data States (Strictly from Supabase for current user)
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -731,6 +735,19 @@ export default function AccountPage() {
 
           <button
             type="button"
+            onClick={() => setActiveTab('coins')}
+            className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
+              activeTab === 'coins'
+                ? 'bg-amber-50 text-amber-950 border border-amber-300 shadow-2xs font-black'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Coins className="w-4 h-4 text-amber-600" />
+            <span>Easy Coins Rewards</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('addresses')}
             className={`flex-1 min-w-[130px] py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
               activeTab === 'addresses'
@@ -935,6 +952,14 @@ export default function AccountPage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ── TAB: EASY COINS & PHYSICAL REWARDS ───────────────────────────── */}
+        {activeTab === 'coins' && (
+          <EasyCoinsAccountTab
+            customerId={profile?.id}
+            customerName={profile?.full_name}
+          />
         )}
 
         {/* ── 4. TAB 2: SAVED ADDRESSES (Strictly THIS User's Addresses) ────── */}

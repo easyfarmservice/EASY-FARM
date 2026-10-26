@@ -85,6 +85,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const rawId = resolvedParams.id || '';
 
   const [order, setOrder] = useState<OrderData | null>(null);
+  const [claimedReward, setClaimedReward] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -103,9 +104,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         if (!isMounted) return;
         if (data.success && data.order) {
           setOrder(data.order);
+          if (data.order.claimedReward) {
+            setClaimedReward(data.order.claimedReward);
+          }
         } else {
           setFetchError(data.error || 'Failed to load order');
         }
+
+        // Also check cached representation for claimed reward snapshot
+        try {
+          const cached = localStorage.getItem(`easyfarm_order_${rawId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.claimedReward) setClaimedReward(parsed.claimedReward);
+          }
+        } catch {}
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -623,6 +636,35 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                 );
               })}
+
+              {/* CLAIMED PHYSICAL REWARD DISPLAY */}
+              {claimedReward && (
+                <div className="pt-3 mt-3 border-t border-amber-200">
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300 rounded-2xl flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-400 text-emerald-950 flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
+                        🎁
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-1.5 py-0.5 rounded">
+                            Free Easy Coins Reward
+                          </span>
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5">
+                          {claimedReward.reward_name_snapshot || claimedReward.name}
+                        </h4>
+                        <span className="text-[11px] text-amber-950 font-medium">
+                          {claimedReward.package_size_snapshot || claimedReward.package_size} • Packed in your Sunday box
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-300">
+                      ₹0.00 (Redeemed)
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Right: Pricing Breakdown (5 cols) */}
