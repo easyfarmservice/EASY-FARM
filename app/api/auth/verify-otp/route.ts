@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyOtp } from '@/lib/otp-store';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/server';
 
 /**
  * POST /api/auth/verify-otp
@@ -49,14 +49,26 @@ export async function POST(request: Request) {
     const supabaseAdmin = createAdminClient();
 
     // 2. Exchange with Supabase for authentic session using internal token
-    const client = createClient();
+    const client = await createClient();
     const internalToken = result.supabaseOtp || cleanOtp;
 
-    const { data: authData, error: authError } = await client.auth.verifyOtp({
+    let { data: authData, error: authError } = await client.auth.verifyOtp({
       email: cleanEmail,
       token: internalToken,
       type: 'email',
     });
+
+    if (authError) {
+      const magicResult = await client.auth.verifyOtp({
+        email: cleanEmail,
+        token: internalToken,
+        type: 'magiclink',
+      });
+      if (!magicResult.error && magicResult.data?.user) {
+        authData = magicResult.data;
+        authError = null;
+      }
+    }
 
     if (authError) {
       console.warn('[verify-otp] Supabase verifyOtp fallback:', authError.message);

@@ -111,7 +111,7 @@ export default function AdminServiceAreasPage() {
               <h1 className="text-2xl font-black text-slate-900">Service Area Management</h1>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Control which Ghatkesar localities receive Easy Farm deliveries. Active areas are live for customers.
+              Control which Ghatkesar &amp; Pocharam, Hyderabad (Active) localities receive Easy Farm deliveries. Active areas are live for customers.
             </p>
           </div>
           <button
@@ -134,7 +134,7 @@ export default function AdminServiceAreasPage() {
             <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Area Name *</label>
-                <input type="text" required placeholder="e.g. Tellapur" value={aName} onChange={(e) => setAName(e.target.value)}
+                <input type="text" required placeholder="e.g. Ghatkesar & Pocharam, Hyderabad (Active)" value={aName} onChange={(e) => setAName(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
               </div>
               <div>
@@ -207,7 +207,7 @@ export default function AdminServiceAreasPage() {
 
         {/* INFO CARD */}
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-900 space-y-1">
-          <p className="font-bold">📍 Current Launch Zone: Ghatkesar, Hyderabad</p>
+          <p className="font-bold">📍 Current Launch Zone: Ghatkesar &amp; Pocharam, Hyderabad (Active)</p>
           <p className="text-emerald-700">Only ACTIVE areas are available for delivery selection during customer checkout. Paused areas are hidden from the customer website.</p>
         </div>
       </div>

@@ -43,9 +43,26 @@ interface StapleBoxZeptoViewProps {
 export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewProps) {
   const { updateCustomizedBasket, totalItems: cartCount } = useCart();
 
+  const parsedInitial = useMemo(() => {
+    if (!initialItems || initialItems.length === 0) return [];
+    return initialItems.slice(0, 5).map((it: any) => {
+      const prod = it.product || {};
+      return {
+        id: prod.id || it.product_id || it.id,
+        name: prod.name || it.product_name || it.name || 'Seasonal Item',
+        price: Number(it.item_price || prod.price || it.price || 35),
+        market_price: Number(it.compare_at_price || prod.market_price || Math.round(Number(it.item_price || prod.price || 35) * 1.25)),
+        quantity: it.quantity || 1,
+        unit: it.unit || prod.unit || 'kg',
+        image_url: prod.image_url || it.image_url || '/images/hero-vegetables.png',
+        active: prod.active !== false,
+      };
+    });
+  }, [initialItems]);
+
   const [basketDetails, setBasketDetails] = useState<Basket>(basket);
-  const [defaultItems, setDefaultItems] = useState<StapleItem[]>([]);
-  const [currentItems, setCurrentItems] = useState<StapleItem[]>([]);
+  const [defaultItems, setDefaultItems] = useState<StapleItem[]>(parsedInitial);
+  const [currentItems, setCurrentItems] = useState<StapleItem[]>(parsedInitial);
   const [eligibleAlternatives, setEligibleAlternatives] = useState<StapleItem[]>([]);
 
   // Swapping modal state
@@ -94,7 +111,8 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
     async function loadWeeklyConfig() {
       setErrorMsg(null);
       try {
-        const res = await fetch(`/api/baskets/${basket.id}/weekly`);
+        const lookupKey = basket.id || basket.slug || '33333333-0000-0000-0000-000000000001';
+        const res = await fetch(`/api/baskets/${encodeURIComponent(lookupKey)}/weekly`);
         const data = await res.json();
 
         if (data.success) {
@@ -122,7 +140,9 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
             image_url: it.image_url || '/images/hero-vegetables.png',
             active: it.active !== false,
           }));
-          setDefaultItems(defaults);
+          if (defaults.length > 0) {
+            setDefaultItems(defaults);
+          }
 
           // Current chosen items
           const current: StapleItem[] = (data.currentItems || data.defaultItems || []).map((it: any) => ({
@@ -137,7 +157,9 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
             isSwapped: Boolean(it.isSwapped),
             replacedProductName: it.replacedProductName,
           }));
-          setCurrentItems(current.length > 0 ? current : defaults);
+          if (current.length > 0) {
+            setCurrentItems(current);
+          }
 
           // Eligible harvest alternatives
           const alts: StapleItem[] = (data.eligibleAlternatives || []).map((it: any) => ({
@@ -151,31 +173,20 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
             active: it.active !== false,
           }));
           setEligibleAlternatives(alts);
-        } else if (initialItems && initialItems.length > 0) {
-          const fallback = initialItems.slice(0, 5).map((it: any) => {
-            const prod = it.product || {};
-            return {
-              id: prod.id || it.product_id,
-              name: prod.name || it.product_name,
-              price: it.item_price || prod.price || 35,
-              market_price: it.compare_at_price || prod.market_price || Math.round((it.item_price || 35) * 1.25),
-              quantity: it.quantity || 1,
-              unit: it.unit || 'kg',
-              image_url: prod.image_url || '/images/hero-vegetables.png',
-              active: prod.active !== false,
-            };
-          });
-          setDefaultItems(fallback);
-          setCurrentItems(fallback);
+        } else if (parsedInitial && parsedInitial.length > 0) {
+          setDefaultItems(parsedInitial);
+          setCurrentItems(parsedInitial);
         }
       } catch (err) {
         console.error('Error loading staple box config:', err);
-        setErrorMsg('Unable to load live basket configuration. Please refresh.');
+        if (parsedInitial.length === 0) {
+          setErrorMsg('Unable to load live basket configuration. Please refresh.');
+        }
       }
     }
 
     loadWeeklyConfig();
-  }, [basket.id, initialItems]);
+  }, [basket.id, basket.slug, parsedInitial]);
 
   // Live dynamic basket price
   const basketTotal = useMemo(() => {
@@ -251,18 +262,18 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
 
   // Sync customized box state into CartProvider
   const syncToCart = (itemsToSync = currentItems) => {
-    const total = itemsToSync.reduce((acc, it) => acc + (it.price || 0), 0);
+    const total = itemsToSync.reduce((acc, it) => acc + (Number(it.price) || 0), 0);
     const customizedBasket: Basket = {
       ...basketDetails,
-      price: total,
+      price: total > 0 ? total : (basketDetails.price || 185),
     };
 
     const cartPayload = itemsToSync.map((it) => ({
       productId: it.id,
       productName: it.name,
       quantity: Number(it.quantity) || 1,
-      unit: it.unit,
-      price: it.price,
+      unit: it.unit || 'kg',
+      price: Number(it.price) || 35,
       compare_at_price: it.market_price,
       image_url: it.image_url,
       isSwapped: it.isSwapped,
@@ -529,9 +540,10 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                 <div className="bg-white rounded-2xl border border-slate-200 p-4 text-center space-y-3 shadow-2xs">
                   <div className="relative w-28 h-28 mx-auto rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center">
                     <Image
-                      src={currentSwapTarget.image_url || '/images/hero-vegetables.png'}
+                      src={getVegetableImageUrl(currentSwapTarget.image_url, currentSwapTarget.name)}
                       alt={currentSwapTarget.name}
                       fill
+                      unoptimized
                       className="object-contain p-2"
                     />
                   </div>

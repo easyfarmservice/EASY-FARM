@@ -19,47 +19,31 @@ export function InitialSplashScreen() {
       if (alreadyShown) {
         return; // Skip showing if already shown during this session
       }
-      // Mark as shown for subsequent route transitions and re-renders
-      window.sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
     } catch {
       // In private browsing or restricted environments, gracefully proceed
     }
 
     // Activate the splash screen
     setIsVisible(true);
-
-    // Trigger initial logo entrance animation on the next animation frame
     const enterRaf = requestAnimationFrame(() => {
       setLogoReady(true);
     });
 
-    // Check application readiness
-    const onAppReady = () => {
-      // Allow the smooth entrance animation to finish, then dismiss smoothly
-      setTimeout(() => {
-        setIsFadingOut(true);
-        // After fade out transition (400ms), completely remove from DOM
-        setTimeout(() => {
-          setIsVisible(false);
-        }, 450);
-      }, 500);
-    };
+    const fadeTimer = setTimeout(() => {
+      setIsFadingOut(true);
+      try {
+        window.sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
+      } catch {}
+    }, 450);
 
-    if (document.readyState === 'complete') {
-      onAppReady();
-    } else {
-      window.addEventListener('load', onAppReady, { once: true });
-      // Fallback safeguard in case window.load already passed or third-party asset delays
-      const safeguardTimer = setTimeout(onAppReady, 1200);
-      return () => {
-        cancelAnimationFrame(enterRaf);
-        window.removeEventListener('load', onAppReady);
-        clearTimeout(safeguardTimer);
-      };
-    }
+    const hideTimer = setTimeout(() => {
+      setIsVisible(false);
+    }, 850);
 
     return () => {
       cancelAnimationFrame(enterRaf);
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
     };
   }, []);
 

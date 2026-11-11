@@ -8,11 +8,13 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createServerClient } from '@supabase/ssr';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { EasyCoinsService } from '@/services/easy-coins.service';
+import { WeeklyStreakService } from '@/services/weekly-streak.service';
 
 const CreateOrderSchema = z.object({
   items: z.array(
     z.object({
       basketId: z.string().min(1, 'Basket ID is required'),
+      basketName: z.string().optional(),
       quantity: z.number().int().positive('Quantity must be greater than zero'),
       customPrice: z.number().optional(),
       compareAtPrice: z.number().optional(),
@@ -34,6 +36,17 @@ const CreateOrderSchema = z.object({
   }),
   couponCode: z.string().optional().nullable(),
   claimedRewardId: z.string().optional().nullable(),
+  claimedRewards: z
+    .array(
+      z.object({
+        rewardProductId: z.string(),
+        quantity: z.number().int().positive().default(1),
+      })
+    )
+    .optional()
+    .nullable(),
+  redeemedDiscountCoins: z.number().int().min(0).optional().nullable(),
+  streakRewardId: z.string().optional().nullable(),
 });
 
 export async function POST(req: NextRequest) {
@@ -61,7 +74,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { items, address, couponCode, claimedRewardId } = parseResult.data;
+    const { items, address, couponCode, claimedRewardId, claimedRewards, redeemedDiscountCoins, streakRewardId } = parseResult.data;
 
     // 2. CRITICAL BACKEND GEOSPATIAL REVALIDATION
     // Never trust client-provided isServiceable flag or React state.
@@ -87,6 +100,7 @@ export async function POST(req: NextRequest) {
     // 3. Authenticate user session if present
     let authUser: any = null;
     let customerProfileId: string | null = null;
+    let profileEmail: string | null = null;
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -111,17 +125,23 @@ export async function POST(req: NextRequest) {
         const supabaseAdmin = createAdminClient();
         const { data: profile } = await supabaseAdmin
           .from('profiles')
-          .select('id')
+          .select('id, email')
           .eq('auth_user_id', authUser.id)
           .maybeSingle();
 
-        if (profile) customerProfileId = profile.id;
+        if (profile) {
+          customerProfileId = profile.id;
+          profileEmail = profile.email || null;
+        }
       }
     } catch (authErr) {
       console.warn('Session verification fallback to guest mode:', authErr);
     }
 
-    const customerEmail = address.email || authUser?.email || 'customer@example.com';
+    // Priority: address form email → profile DB email → auth session email
+    // Never fall back to a placeholder — if no email found, leave empty so
+    // delivery routes know not to attempt sending.
+    const customerEmail = address.email || profileEmail || authUser?.email || '';
 
     // 4. SERVER-AUTHORITATIVE PRICING RECALCULATION
     const pricingItems = items.map((i) => ({
@@ -129,6 +149,7 @@ export async function POST(req: NextRequest) {
       quantity: i.quantity,
       customPrice: i.customPrice,
       compareAtPrice: i.compareAtPrice,
+      customizedItems: i.customizedItems,
     }));
     const serverPricing = await PricingService.calculateOrderTotal(
       pricingItems,
@@ -143,9 +164,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const finalTotal = serverPricing.totalPayable;
+    let finalTotal = serverPricing.totalPayable;
     const finalSubtotal = serverPricing.subtotal;
     const finalDeliveryFee = serverPricing.deliveryFee;
+
+    // Validate and Apply Weekly Streak Milestone Reward Discount (if selected)
+    let streakDiscountAmount = 0;
+    let appliedStreakReward: any = null;
+    if (streakRewardId && customerProfileId) {
+      const streakValidation = await WeeklyStreakService.validateAndApplyReward({
+        customerId: customerProfileId,
+        rewardId: streakRewardId,
+        subtotal: finalSubtotal,
+        hasCoupon: !!couponCode,
+      });
+
+      if (!streakValidation.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: streakValidation.message || 'Selected streak milestone reward could not be applied.',
+          },
+          { status: 400 }
+        );
+      }
+
+      streakDiscountAmount = streakValidation.discountAmount;
+      appliedStreakReward = streakValidation.reward;
+      finalTotal = Math.max(1, finalTotal - streakDiscountAmount);
+    }
 
     // 5. Generate unique Order ID
     const orderId = `ORD-${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`;
@@ -216,30 +263,90 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Handle Easy Coins Reward Claim Reservation (if customer selected a reward)
+    // Handle Easy Coins Reward Claim Reservation (supports claiming any number of items up to balance)
     let claimedRewardSnapshot: any = null;
-    if (claimedRewardId) {
-      const reservation = await EasyCoinsService.reserveReward({
+    let claimedRewardsSnapshot: any[] = [];
+
+    const rewardItemsToReserve =
+      Array.isArray(claimedRewards) && claimedRewards.length > 0
+        ? claimedRewards.map((r) => ({
+            reward_product_id: r.rewardProductId,
+            quantity: r.quantity || 1,
+          }))
+        : claimedRewardId
+        ? [{ reward_product_id: claimedRewardId, quantity: 1 }]
+        : [];
+
+    if (rewardItemsToReserve.length > 0) {
+      const reservation = await EasyCoinsService.reserveMultipleRewards({
         order_id: orderId,
         customer_id: customerProfileId || 'guest-customer-default',
-        reward_product_id: claimedRewardId,
+        items: rewardItemsToReserve,
       });
 
       if (!reservation.success) {
         return NextResponse.json(
           {
             success: false,
-            error: reservation.error || 'Failed to claim reward. Please choose another reward or continue without one.',
+            error:
+              reservation.error ||
+              'Failed to claim reward items. Please check your Easy Coins balance or continue without rewards.',
           },
           { status: 400 }
         );
       }
-      claimedRewardSnapshot = reservation.claim;
+
+      claimedRewardsSnapshot = reservation.claims || [];
+      claimedRewardSnapshot = claimedRewardsSnapshot[0] || null;
     }
+
+    // Handle Easy Coins Basket Purchase Discount (10 Easy Coins = ₹1 Rupee)
+    let coinsDiscountUsed = 0;
+    let coinsDiscountAmount = 0;
+    const requestedDiscountCoins = Math.max(0, Math.floor(Number(redeemedDiscountCoins) || 0));
+
+    if (requestedDiscountCoins > 0) {
+      const targetCustomerId = customerProfileId || 'guest-customer-default';
+      const customerBalance = await EasyCoinsService.getCustomerBalance(targetCustomerId);
+      const rewardItemsCoinsSpent = claimedRewardsSnapshot.reduce(
+        (sum, c) => sum + Number(c.total_coins ?? c.coin_cost_snapshot ?? 0),
+        0
+      );
+      const availableForDiscount = Math.max(0, customerBalance - rewardItemsCoinsSpent);
+
+      if (requestedDiscountCoins > availableForDiscount) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Insufficient Easy Coins for discount. Available balance after extra items is ${availableForDiscount} Coins.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const maxCoinsByOrderTotal = Math.max(0, Math.floor(Math.max(0, finalTotal - 1) * 10));
+      coinsDiscountUsed = Math.min(requestedDiscountCoins, maxCoinsByOrderTotal);
+      coinsDiscountAmount = Number((coinsDiscountUsed / 10).toFixed(2));
+      finalTotal = Math.max(1, Number((finalTotal - coinsDiscountAmount).toFixed(2)));
+    }
+
+    // Enrich items breakdown with customized vegetable sub-items and names
+    const enrichedItems = (serverPricing.itemsBreakdown || []).map((pricedItem, idx) => {
+      const reqItem = items[idx] || items.find((i) => i.basketId === pricedItem.basketId);
+      return {
+        ...pricedItem,
+        basketName:
+          pricedItem.basketName && pricedItem.basketName !== 'Fresh Farm Basket'
+            ? pricedItem.basketName
+            : reqItem?.basketName || pricedItem.basketName || 'Fresh Farm Basket',
+        customizedItems: reqItem?.customizedItems || [],
+      };
+    });
 
     // Comprehensive JSON order metadata for Admin Panel & My Orders
     const orderMetadata = {
       orderNumber: orderId,
+      customerId: customerProfileId || 'guest-customer-default',
       customerName: address.fullName,
       customerPhone: address.phone,
       customerEmail: customerEmail,
@@ -249,10 +356,31 @@ export async function POST(req: NextRequest) {
       pincode: address.pincode,
       fullAddress: `${address.flatNo}, ${address.apartment}, ${address.locality}, PIN ${address.pincode}`,
       couponCode: couponCode || null,
-      items: serverPricing.itemsBreakdown,
+      couponDiscount: serverPricing.couponDiscount || 0,
+      coinsDiscountAmount,
+      coinsDiscount:
+        coinsDiscountUsed > 0
+          ? {
+              coinsUsed: coinsDiscountUsed,
+              discountAmount: coinsDiscountAmount,
+            }
+          : null,
+      subtotal: finalSubtotal,
+      deliveryFee: finalDeliveryFee,
+      total: finalTotal,
+      deliveryDate: deliveryDateStr,
+      items: enrichedItems,
       deliveryPromise: serviceability.delivery_promise || 'Sunday by 6 PM',
-      deliveryZone: serviceability.zone_name || 'Ghatkesar & Pocharam',
+      deliveryZone: serviceability.zone_name || 'Ghatkesar & Pocharam, Hyderabad (Active)',
       claimedReward: claimedRewardSnapshot,
+      claimedRewards: claimedRewardsSnapshot,
+      streakReward: appliedStreakReward
+        ? {
+            id: appliedStreakReward.id,
+            title: appliedStreakReward.milestone_title,
+            discountAmount: streakDiscountAmount,
+          }
+        : null,
     };
 
     // Insert order record
@@ -293,12 +421,42 @@ export async function POST(req: NextRequest) {
             }))
           );
         }
+
+        // Record streak reward redemption if applied
+        if (appliedStreakReward && customerProfileId) {
+          await WeeklyStreakService.recordRewardRedemption({
+            rewardId: appliedStreakReward.id,
+            customerId: customerProfileId,
+            orderId: newOrderRecord?.id || orderId,
+            subtotalBefore: finalSubtotal,
+            discountAmount: streakDiscountAmount,
+          });
+        }
       }
     } catch (dbErr) {
       console.warn('Database order persistence fallback:', dbErr);
     }
 
-    // 7. Create Payment Order (Razorpay)
+    // 7. Process Easy Coins subtraction (extra items + 10 Coins = ₹1 basket discount) & addition (earned coins on basket purchase)
+    let coinsEarned = 0;
+    let newCoinBalance = 0;
+    try {
+      const settlement = await EasyCoinsService.processOrderCoinsSettlement({
+        order_id: orderId,
+        customer_id: customerProfileId || 'guest-customer-default',
+        eligible_subtotal: finalSubtotal,
+        discount_coins: coinsDiscountUsed,
+        discount_amount_inr: coinsDiscountAmount,
+        claimed_rewards: claimedRewardsSnapshot,
+        payment_id: `checkout_${orderId}`,
+      });
+      coinsEarned = settlement.coins_earned;
+      newCoinBalance = settlement.new_balance;
+    } catch (coinSettleErr) {
+      console.warn('Easy Coins settlement warning during create-order:', coinSettleErr);
+    }
+
+    // 8. Create Payment Order (Razorpay)
     const paymentOrder = await PaymentService.createPaymentOrder(orderId, finalTotal);
 
     // Save initial record to payments table linked with Razorpay Order ID
@@ -323,14 +481,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       orderId,
+      customerProfileId: customerProfileId || 'guest-customer-default',
       total: finalTotal,
       subtotal: finalSubtotal,
       deliveryFee: finalDeliveryFee,
       couponDiscount: serverPricing.couponDiscount,
+      coinsDiscountAmount,
+      coinsDiscount:
+        coinsDiscountUsed > 0
+          ? {
+              coinsUsed: coinsDiscountUsed,
+              discountAmount: coinsDiscountAmount,
+            }
+          : null,
+      coinsEarned,
+      newCoinBalance,
       paymentOrder,
       deliveryZone: serviceability.zone_name,
       deliveryPromise: serviceability.delivery_promise,
       claimedReward: claimedRewardSnapshot,
+      claimedRewards: claimedRewardsSnapshot,
     });
   } catch (err: any) {
     console.error('Checkout create-order endpoint failure:', err);

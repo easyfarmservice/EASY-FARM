@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { verifyDeliveryOtpHash } from '@/lib/delivery-otp';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
 import { EmailService } from '@/services/email.service';
+import { WeeklyStreakService } from '@/services/weekly-streak.service';
 
 export async function POST(req: NextRequest) {
   // 1. Rate limiting check (max 30 verify attempts per minute)
@@ -260,6 +261,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // 11.1. Award Weekly Streak stamp & check milestone unlocks
+    try {
+      await WeeklyStreakService.processDeliveredOrder(order.id);
+    } catch (streakErr) {
+      console.error('[VerifyOTP] Error awarding weekly streak stamp:', streakErr);
+    }
+
     // 12. Dispatch "Order Delivered" confirmation email to customer via Resend
     let meta: any = null;
     if (order.notes) {
@@ -287,7 +295,7 @@ export async function POST(req: NextRequest) {
       [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
         .filter(Boolean)
         .join(', ') ||
-      'Ghatkesar & Pocharam Corridor';
+      'Ghatkesar & Pocharam, Hyderabad (Active)';
 
     let deliveryEmailSent = false;
     if (customerEmail) {

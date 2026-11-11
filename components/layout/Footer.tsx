@@ -14,7 +14,7 @@ const DEFAULTS = {
     'Boduppal & Medipally',
     'Peerzadiguda & Narapally',
   ],
-  supportEmail: 'support@easyfarm.in',
+  supportEmail: 'easyfarmsupport@gmail.com',
   supportPhone: '+91 40 8899 7766',
   whatsappNumber: '+91 98490 12345',
   copyrightText: `© ${new Date().getFullYear()} Easy Farm . All rights reserved.`,
@@ -62,9 +62,9 @@ export function Footer({ settings }: { settings?: any } = {}) {
           </div>
 
           {/* QUICK NAVIGATION */}
-          <div className="lg:col-span-3 space-y-3">
+          <div className="lg:col-span-2 space-y-3">
             <h3 className="text-white font-extrabold text-xs tracking-wider uppercase">
-              Our Boxes & Sourcing
+              Our Boxes
             </h3>
             <ul className="space-y-2.5 text-xs sm:text-sm font-medium">
               <li>
@@ -84,7 +84,7 @@ export function Footer({ settings }: { settings?: any } = {}) {
               </li>
               <li>
                 <Link href="/location" className="hover:text-white transition flex items-center gap-1">
-                  <span>Delivery Coverage Map</span>
+                  <span>Coverage Map</span>
                 </Link>
               </li>
             </ul>
@@ -115,10 +115,29 @@ export function Footer({ settings }: { settings?: any } = {}) {
             </div>
           </div>
 
-          {/* CONTACT & SUPPORT */}
-          <div className="lg:col-span-3 space-y-3">
+          {/* LEGAL SECTION */}
+          <div className="lg:col-span-2 space-y-3">
             <h3 className="text-white font-extrabold text-xs tracking-wider uppercase">
-              Customer Support
+              Legal
+            </h3>
+            <ul className="space-y-2.5 text-xs sm:text-sm font-medium">
+              <li>
+                <Link href="/terms-and-conditions" className="hover:text-white transition flex items-center gap-1">
+                  <span>Terms &amp; Conditions</span>
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy-policy" className="hover:text-white transition flex items-center gap-1">
+                  <span>Privacy Policy</span>
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* CONTACT & SUPPORT */}
+          <div className="lg:col-span-2 space-y-3">
+            <h3 className="text-white font-extrabold text-xs tracking-wider uppercase">
+              Support
             </h3>
             <ul className="space-y-2.5 text-xs sm:text-sm">
               <li>
@@ -135,19 +154,14 @@ export function Footer({ settings }: { settings?: any } = {}) {
                   className="hover:text-white transition flex items-center gap-2"
                 >
                   <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>WhatsApp: {data.whatsappNumber || '+91 98490 12345'}</span>
+                  <span>WhatsApp</span>
                 </a>
               </li>
               <li>
                 <a href={`mailto:${data.supportEmail}`} className="hover:text-white transition flex items-center gap-2">
                   <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{data.supportEmail}</span>
+                  <span className="truncate">{data.supportEmail}</span>
                 </a>
-              </li>
-              <li className="pt-2 text-xs text-emerald-400/60 flex items-center gap-3">
-                <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
-                <span>•</span>
-                <Link href="/terms" className="hover:underline">Terms of Service</Link>
               </li>
             </ul>
           </div>

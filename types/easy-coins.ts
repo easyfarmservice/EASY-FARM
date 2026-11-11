@@ -1,6 +1,7 @@
 export type LedgerTransactionType =
   | 'earned_order'
   | 'redeemed_reward'
+  | 'redeemed_discount'
   | 'reversed_cancellation'
   | 'admin_adjustment'
   | 'expired'
@@ -81,6 +82,11 @@ export interface EasyCoinsLedgerEntry {
   created_at: string;
 }
 
+export interface ClaimedRewardSelection {
+  product: RewardProduct;
+  quantity: number;
+}
+
 export interface RewardClaim {
   id: string;
   order_id: string;
@@ -99,6 +105,13 @@ export interface RewardClaim {
   cancellation_reason?: string;
   created_at: string;
   updated_at?: string;
+  // Normalized convenience aliases for UI & Admin Order Management
+  name?: string;
+  brand?: string;
+  package_size?: string;
+  coin_cost?: number;
+  total_coins?: number;
+  image_url?: string;
   // Joins
   reward_product?: RewardProduct;
   customer_name?: string;

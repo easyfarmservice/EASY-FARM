@@ -53,7 +53,7 @@ export function Hero({ initialContent }: { initialContent?: any } = {}) {
 
           {/* SUPPORTING TEXT */}
           <p className="text-sm sm:text-base lg:text-lg text-white/90 font-normal leading-relaxed max-w-xl drop-shadow-sm">
-            Handpicked weekly from local Telangana farms on Saturday, delivered fresh to your doorstep in Ghatkesar &amp; Pocharam every Sunday.
+            Handpicked weekly from local Telangana farms on Saturday, delivered fresh to your doorstep in Ghatkesar &amp; Pocharam, Hyderabad (Active) every Sunday.
           </p>
 
           {/* COMPACT BENEFITS ROW */}

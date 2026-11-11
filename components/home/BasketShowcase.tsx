@@ -54,7 +54,20 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
     e.preventDefault();
     e.stopPropagation();
     if (b.active === false) return;
-    addToCart(b);
+    
+    // Automatically attach included vegetables if available
+    const rawItems = b.items || [];
+    const fixed = rawItems.filter((it: any) => it.is_fixed !== false && it.is_default !== false).slice(0, 5);
+    const includedPayload = (fixed.length > 0 ? fixed : rawItems.slice(0, 5)).map((it: any) => ({
+      productId: it.product_id || it.product?.id,
+      productName: it.product?.name || it.product_name || 'Seasonal Vegetable',
+      quantity: it.quantity || 1,
+      unit: it.unit || it.product?.unit || 'kg',
+      price: it.item_price || it.product?.price || 35,
+      image_url: it.product?.image_url,
+    }));
+
+    addToCart(b, includedPayload.length > 0 ? includedPayload : undefined);
     setAddedId(b.id);
     setTimeout(() => setAddedId(null), 1500);
   };
@@ -72,7 +85,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
             Our Two Weekly Boxes
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Plucked straight from local Telangana soil every Saturday, delivered fresh to your door in Ghatkesar &amp; Pocharam every Sunday. Choose our curated essential Staple Box or build your own Custom Box.
+            Plucked straight from local Telangana soil every Saturday, delivered fresh to your door in Ghatkesar &amp; Pocharam, Hyderabad (Active) every Sunday. Choose our curated essential Staple Box or build your own Custom Box.
           </p>
         </div>
 
@@ -285,11 +298,10 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                     <button
                       type="button"
                       onClick={(e) => handleQuickAdd(b, e)}
-                      className={`w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold transition border flex items-center justify-center gap-2 ${
-                        addedId === b.id
-                          ? 'bg-emerald-100 border-emerald-300 text-emerald-950 font-black'
-                          : 'bg-white hover:bg-emerald-50/50 border-emerald-200 text-emerald-900'
-                      }`}
+                      className={`w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold transition border flex items-center justify-center gap-2 ${addedId === b.id
+                        ? 'bg-emerald-100 border-emerald-300 text-emerald-950 font-black'
+                        : 'bg-white hover:bg-emerald-50/50 border-emerald-200 text-emerald-900'
+                        }`}
                     >
                       {addedId === b.id ? (
                         <>

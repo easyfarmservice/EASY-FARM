@@ -130,35 +130,29 @@ export async function POST(req: NextRequest) {
           .eq('id', ordRecord.id);
       }
 
-      // 3. Process Easy Coins Loyalty System: Confirm claimed reward & award order coins
+      // 3. Process Easy Coins Loyalty System: Confirm claimed reward, deduct basket discount coins & award order coins (idempotently)
       const appOrderRef = appOrderId || orderNotes.orderNumber || orderId;
       const customerProfileRef = (ordRecord as any)?.customer_id || orderNotes.customerId || 'guest-customer-default';
       const orderSubtotal = Number(orderNotes.subtotal || (payRow as any)?.amount || 0);
 
-      // Confirm physical reward claim (atomic coin debit & status confirmed)
       try {
-        const claimResult = await EasyCoinsService.confirmRewardClaim({
-          order_id: appOrderRef,
-          payment_id: paymentId,
-        });
-        if (claimResult.success && claimResult.claim) {
-          confirmedRewardData = claimResult.claim;
-        }
-      } catch (claimErr) {
-        console.warn('[Easy Coins] Reward claim confirmation notice:', claimErr);
-      }
-
-      // Award Easy Coins for the vegetable purchase (atomic coin credit)
-      try {
-        const earnResult = await EasyCoinsService.awardOrderCoins({
+        const settlement = await EasyCoinsService.processOrderCoinsSettlement({
           order_id: appOrderRef,
           customer_id: customerProfileRef,
           eligible_subtotal: orderSubtotal,
+          discount_coins: Number(orderNotes.coinsDiscount?.coinsUsed || 0),
+          discount_amount_inr: Number(orderNotes.coinsDiscount?.discountAmount || orderNotes.coinsDiscountAmount || 0),
+          claimed_rewards: Array.isArray(orderNotes.claimedRewards)
+            ? orderNotes.claimedRewards
+            : orderNotes.claimedReward
+            ? [orderNotes.claimedReward]
+            : [],
           payment_id: paymentId,
         });
-        coinsEarned = earnResult.coins_awarded;
-      } catch (earnErr) {
-        console.warn('[Easy Coins] Order coins award notice:', earnErr);
+        confirmedRewardData = settlement.confirmed_claims[0] || null;
+        coinsEarned = settlement.coins_earned;
+      } catch (settleErr) {
+        console.warn('[Easy Coins] Order coins settlement notice:', settleErr);
       }
 
       // 4. Dispatch official Order Confirmation email now that payment has succeeded
@@ -173,7 +167,7 @@ export async function POST(req: NextRequest) {
             /^[,\s]+|[,\s]+$/g,
             ''
           ) ||
-          'Ghatkesar & Pocharam Corridor';
+          'Ghatkesar & Pocharam, Hyderabad (Active)';
 
         const emailItems = (orderNotes.items || []).map((i: any) => ({
           name: i.basketName || i.name || 'Weekly Harvest Basket',

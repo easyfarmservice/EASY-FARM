@@ -11,10 +11,10 @@ interface ContactSectionProps {
 }
 
 export function ContactSection({
-  supportEmail = 'support@easyfarm.in',
+  supportEmail = 'easyfarmsupport@gmail.com',
   supportPhone = '+91 40 8899 7766',
   whatsappNumber = '+91 98490 12345',
-  hubLocation = 'Ghatkesar & Pocharam Hub, Hyderabad',
+  hubLocation = 'Ghatkesar & Pocharam, Hyderabad (Active)',
 }: ContactSectionProps) {
   const [formData, setFormData] = useState({
     name: '',

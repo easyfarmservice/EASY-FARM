@@ -46,7 +46,7 @@ export class DeliveryService {
         available: false,
         delivery_fee: 0,
         minimum_order: 0,
-        message: "We don't deliver to this location yet. We currently serve our active launch zones in Ghatkesar & Pocharam.",
+        message: "We don't deliver to this location yet. We currently serve our active launch zones in Ghatkesar & Pocharam, Hyderabad (Active).",
       };
     } catch (err: any) {
       console.error('Error in DeliveryService.checkAvailability:', err);
@@ -121,7 +121,7 @@ export class DeliveryService {
         available: false,
         delivery_fee: 0,
         minimum_order: 0,
-        message: "We don't deliver to this PIN code yet. We currently serve our active launch zones in Ghatkesar & Pocharam.",
+        message: "We don't deliver to this PIN code yet. We currently serve our active launch zones in Ghatkesar & Pocharam, Hyderabad (Active).",
       };
     } catch (err: any) {
       console.error('Error in DeliveryService.checkAvailabilityByPincode:', err);

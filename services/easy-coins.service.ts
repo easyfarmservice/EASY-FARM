@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: EasyCoinsSettings = {
   is_enabled: true,
   earn_rate_per_100_inr: 10,
   min_qualifying_order: 100.0,
-  max_rewards_per_order: 1,
+  max_rewards_per_order: 99,
   coin_expiry_days: 365,
   bonus_first_order_coins: 20,
   bonus_repeat_order_coins: 0,
@@ -907,6 +907,8 @@ function loadPersistedState(): {
   settings: EasyCoinsSettings;
   categories: RewardCategory[];
   products: RewardProduct[];
+  ledger: EasyCoinsLedgerEntry[];
+  claims: RewardClaim[];
 } {
   try {
     if (fs.existsSync(PERSIST_FILE)) {
@@ -917,6 +919,8 @@ function loadPersistedState(): {
           settings: parsed.settings || DEFAULT_SETTINGS,
           categories: parsed.categories || INITIAL_CATEGORIES,
           products: parsed.products,
+          ledger: Array.isArray(parsed.ledger) ? parsed.ledger : [],
+          claims: Array.isArray(parsed.claims) ? parsed.claims : [],
         };
       }
     }
@@ -929,6 +933,8 @@ function loadPersistedState(): {
     settings: { ...DEFAULT_SETTINGS },
     categories: [...INITIAL_CATEGORIES],
     products: [...INITIAL_PRODUCTS],
+    ledger: [] as EasyCoinsLedgerEntry[],
+    claims: [] as RewardClaim[],
   };
   try {
     ensureDirectoryExists(PERSIST_FILE);
@@ -943,6 +949,8 @@ function savePersistedState(state: {
   settings?: EasyCoinsSettings;
   categories?: RewardCategory[];
   products?: RewardProduct[];
+  ledger?: EasyCoinsLedgerEntry[];
+  claims?: RewardClaim[];
 }) {
   try {
     ensureDirectoryExists(PERSIST_FILE);
@@ -954,6 +962,8 @@ function savePersistedState(state: {
       settings: state.settings || existing.settings || memorySettings,
       categories: state.categories || existing.categories || memoryCategories,
       products: state.products || existing.products || memoryProducts,
+      ledger: state.ledger || memoryLedger || existing.ledger || [],
+      claims: state.claims || memoryClaims || existing.claims || [],
       updated_at: new Date().toISOString(),
     };
     fs.writeFileSync(PERSIST_FILE, JSON.stringify(combined, null, 2), 'utf-8');
@@ -967,8 +977,56 @@ const initialSaved = loadPersistedState();
 let memorySettings: EasyCoinsSettings = initialSaved.settings;
 let memoryCategories: RewardCategory[] = initialSaved.categories;
 let memoryProducts: RewardProduct[] = initialSaved.products;
-let memoryLedger: EasyCoinsLedgerEntry[] = [];
-let memoryClaims: RewardClaim[] = [];
+let memoryLedger: EasyCoinsLedgerEntry[] = initialSaved.ledger;
+let memoryClaims: RewardClaim[] = initialSaved.claims;
+
+function syncFromDisk() {
+  try {
+    if (fs.existsSync(PERSIST_FILE)) {
+      const content = fs.readFileSync(PERSIST_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed) {
+        if (parsed.settings) memorySettings = parsed.settings;
+        if (Array.isArray(parsed.categories) && parsed.categories.length > 0) {
+          memoryCategories = parsed.categories;
+        }
+        if (Array.isArray(parsed.products) && parsed.products.length > 0) {
+          memoryProducts = parsed.products;
+        }
+        if (Array.isArray(parsed.ledger)) {
+          memoryLedger = parsed.ledger;
+        }
+        if (Array.isArray(parsed.claims)) {
+          memoryClaims = parsed.claims;
+        }
+      }
+    }
+  } catch {
+    // Use current memory state
+  }
+}
+
+function isUuid(val?: string | null): boolean {
+  return Boolean(
+    val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim())
+  );
+}
+
+async function resolveDbOrderUuid(orderIdOrNumber?: string | null): Promise<string | null> {
+  if (!orderIdOrNumber) return null;
+  if (isUuid(orderIdOrNumber)) return orderIdOrNumber.trim();
+  try {
+    const supabase = createAdminClient();
+    const { data } = await supabase
+      .from('orders')
+      .select('id')
+      .ilike('notes', `%${orderIdOrNumber}%`)
+      .limit(1)
+      .maybeSingle();
+    if (data?.id && isUuid(data.id)) return data.id;
+  } catch {}
+  return null;
+}
 
 export class EasyCoinsService {
   /**
@@ -1009,66 +1067,14 @@ export class EasyCoinsService {
     products: RewardProduct[];
     settings: EasyCoinsSettings;
   }> {
+    syncFromDisk();
     const settings = await this.getSettings();
 
-    try {
-      const supabase = createAdminClient();
-      const [catRes, prodRes] = await Promise.all([
-        supabase
-          .from('reward_categories')
-          .select('*')
-          .eq('is_active', true)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('reward_products')
-          .select('*, reward_categories(name)')
-          .eq('is_active', true)
-          .eq('is_archived', false)
-          .order('coin_cost', { ascending: true }),
-      ]);
-
-      if (prodRes.data && prodRes.data.length > 0) {
-        const categories: RewardCategory[] = (catRes.data || []).map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          slug: c.slug,
-          description: c.description,
-          icon: c.icon,
-          sort_order: c.sort_order || 0,
-          is_active: c.is_active ?? true,
-        }));
-
-        const products: RewardProduct[] = prodRes.data.map((p: any) => ({
-          id: p.id,
-          sku: p.sku,
-          name: p.name,
-          brand: p.brand,
-          category_id: p.category_id,
-          category_name: p.reward_categories?.name || 'Essentials',
-          description: p.description,
-          package_size: p.package_size,
-          image_url: p.image_url || '/images/rewards/neem-comb.jpg',
-          coin_cost: Number(p.coin_cost) || 0,
-          stock_quantity: Number(p.stock_quantity) || 0,
-          is_active: p.is_active ?? true,
-          is_archived: p.is_archived ?? false,
-          availability_status: p.availability_status || (p.stock_quantity > 0 ? 'available' : 'out_of_stock'),
-          bundle_components: p.bundle_components || [],
-          max_claims_per_customer: p.max_claims_per_customer,
-          max_claims_per_order: p.max_claims_per_order || 1,
-          min_order_value: Number(p.min_order_value) || 0,
-          cost_price_inr: Number(p.cost_price_inr) || 0,
-          supplier_name: p.supplier_name,
-        }));
-
-        return { categories, products, settings };
-      }
-    } catch {
-      // Use durable memory/file store
-    }
-
-    // Customer catalog only shows active & non-archived products
-    const customerProducts = memoryProducts.filter((p) => p.is_active && !p.is_archived);
+    // Customer catalog only shows active & non-archived products from durable catalog store
+    const customerProducts = memoryProducts
+      .filter((p) => p.is_active && !p.is_archived)
+      .slice()
+      .sort((a, b) => a.coin_cost - b.coin_cost);
 
     return {
       categories: memoryCategories.filter((c) => c.is_active),
@@ -1091,80 +1097,10 @@ export class EasyCoinsService {
     products: RewardProduct[];
     settings: EasyCoinsSettings;
   }> {
+    syncFromDisk();
     const settings = await this.getSettings();
 
-    try {
-      const supabase = createAdminClient();
-      let query = supabase.from('reward_products').select('*, reward_categories(name)');
-
-      if (filters?.category && filters.category !== 'all') {
-        query = query.eq('category_id', filters.category);
-      }
-      if (filters?.status === 'active') {
-        query = query.eq('is_active', true).eq('is_archived', false);
-      } else if (filters?.status === 'inactive') {
-        query = query.eq('is_active', false).eq('is_archived', false);
-      } else if (filters?.status === 'archived') {
-        query = query.eq('is_archived', true);
-      }
-      if (filters?.stock === 'in_stock') {
-        query = query.gt('stock_quantity', 0);
-      } else if (filters?.stock === 'out_of_stock') {
-        query = query.lte('stock_quantity', 0);
-      }
-
-      if (filters?.sort === 'coin_desc') {
-        query = query.order('coin_cost', { ascending: false });
-      } else if (filters?.sort === 'name_asc') {
-        query = query.order('name', { ascending: true });
-      } else if (filters?.sort === 'name_desc') {
-        query = query.order('name', { ascending: false });
-      } else {
-        query = query.order('coin_cost', { ascending: true });
-      }
-
-      const { data, error } = await query;
-      if (data && !error && data.length > 0) {
-        let results: RewardProduct[] = data.map((p: any) => ({
-          id: p.id,
-          sku: p.sku,
-          name: p.name,
-          brand: p.brand,
-          category_id: p.category_id,
-          category_name: p.reward_categories?.name || 'Essentials',
-          description: p.description,
-          package_size: p.package_size,
-          image_url: p.image_url || '/images/rewards/neem-comb.jpg',
-          coin_cost: Number(p.coin_cost) || 0,
-          stock_quantity: Number(p.stock_quantity) || 0,
-          is_active: p.is_active ?? true,
-          is_archived: p.is_archived ?? false,
-          availability_status: p.availability_status || (p.stock_quantity > 0 ? 'available' : 'out_of_stock'),
-          bundle_components: p.bundle_components || [],
-          max_claims_per_customer: p.max_claims_per_customer,
-          max_claims_per_order: p.max_claims_per_order || 1,
-          min_order_value: Number(p.min_order_value) || 0,
-          cost_price_inr: Number(p.cost_price_inr) || 0,
-          supplier_name: p.supplier_name,
-        }));
-
-        if (filters?.search) {
-          const s = filters.search.toLowerCase();
-          results = results.filter(
-            (p) =>
-              p.name.toLowerCase().includes(s) ||
-              p.brand?.toLowerCase().includes(s) ||
-              p.sku?.toLowerCase().includes(s)
-          );
-        }
-
-        return { categories: memoryCategories, products: results, settings };
-      }
-    } catch {
-      // Memory fallback
-    }
-
-    // Apply memory filters
+    // Apply filters on durable catalog store
     let list = [...memoryProducts];
 
     if (filters?.category && filters.category !== 'all') {
@@ -1210,6 +1146,10 @@ export class EasyCoinsService {
    * Retrieves single reward product by ID
    */
   static async getProductById(id: string): Promise<RewardProduct | null> {
+    syncFromDisk();
+    const memMatch = memoryProducts.find((p) => p.id === id);
+    if (memMatch) return memMatch;
+
     try {
       const supabase = createAdminClient();
       const { data, error } = await supabase
@@ -1246,7 +1186,7 @@ export class EasyCoinsService {
       // Fallback
     }
 
-    return memoryProducts.find((p) => p.id === id) || null;
+    return null;
   }
 
   /**
@@ -1254,37 +1194,45 @@ export class EasyCoinsService {
    */
   static async getCustomerBalance(customerId: string): Promise<number> {
     if (!customerId) return 0;
-
-    try {
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from('easy_coins_ledger')
-        .select('balance_after')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (data && !error && typeof data.balance_after === 'number') {
-        return Math.max(0, data.balance_after);
-      }
-
-      const { data: allRows } = await supabase
-        .from('easy_coins_ledger')
-        .select('amount')
-        .eq('customer_id', customerId);
-
-      if (allRows && allRows.length > 0) {
-        const sum = allRows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
-        return Math.max(0, sum);
-      }
-    } catch {
-      // Fallback memory ledger check
-    }
+    syncFromDisk();
 
     const customerEntries = memoryLedger.filter((e) => e.customer_id === customerId);
     if (customerEntries.length > 0) {
       return Math.max(0, customerEntries[customerEntries.length - 1].balance_after);
+    }
+
+    if (isUuid(customerId)) {
+      try {
+        const supabase = createAdminClient();
+        const { data, error } = await supabase
+          .from('easy_coins_ledger')
+          .select('balance_after')
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (data && !error && typeof data.balance_after === 'number') {
+          return Math.max(0, data.balance_after);
+        }
+
+        const { data: allRows } = await supabase
+          .from('easy_coins_ledger')
+          .select('amount')
+          .eq('customer_id', customerId);
+
+        if (allRows && allRows.length > 0) {
+          const sum = allRows.reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
+          return Math.max(0, sum);
+        }
+      } catch {
+        // Fallback memory ledger check
+      }
+    }
+
+    // If querying guest-customer-default and a profile has transactions, return latest profile balance
+    if (customerId === 'guest-customer-default' && memoryLedger.length > 0) {
+      return Math.max(0, memoryLedger[memoryLedger.length - 1].balance_after);
     }
 
     // Default starting demo balance for testing if no transactions yet
@@ -1295,87 +1243,99 @@ export class EasyCoinsService {
    * Retrieves complete Customer Easy Coins overview (Balance, Ledger, Claims)
    */
   static async getCustomerOverview(customerId: string): Promise<CustomerCoinsOverview> {
+    syncFromDisk();
     const settings = await this.getSettings();
     const balance = await this.getCustomerBalance(customerId);
 
     let ledger: EasyCoinsLedgerEntry[] = [];
     let claims: RewardClaim[] = [];
 
-    try {
-      const supabase = createAdminClient();
+    if (isUuid(customerId)) {
+      try {
+        const supabase = createAdminClient();
 
-      const [ledgerRes, claimsRes] = await Promise.all([
-        supabase
-          .from('easy_coins_ledger')
-          .select('*')
-          .eq('customer_id', customerId)
-          .order('created_at', { ascending: false })
-          .limit(50),
-        supabase
-          .from('reward_claims')
-          .select('*, orders(delivery_date, status)')
-          .eq('customer_id', customerId)
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ]);
+        const [ledgerRes, claimsRes] = await Promise.all([
+          supabase
+            .from('easy_coins_ledger')
+            .select('*')
+            .eq('customer_id', customerId)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase
+            .from('reward_claims')
+            .select('*, orders(delivery_date, status)')
+            .eq('customer_id', customerId)
+            .order('created_at', { ascending: false })
+            .limit(20),
+        ]);
 
-      if (ledgerRes.data && ledgerRes.data.length > 0) {
-        ledger = ledgerRes.data.map((row: any) => ({
-          id: row.id,
-          customer_id: row.customer_id,
-          order_id: row.order_id,
-          amount: Number(row.amount) || 0,
-          balance_after: Number(row.balance_after) || 0,
-          transaction_type: row.transaction_type,
-          description: row.description,
-          reference_id: row.reference_id,
-          created_at: row.created_at,
-        }));
+        if (ledgerRes.data && ledgerRes.data.length > 0) {
+          ledger = ledgerRes.data.map((row: any) => ({
+            id: row.id,
+            customer_id: row.customer_id,
+            order_id: row.order_id,
+            amount: Number(row.amount) || 0,
+            balance_after: Number(row.balance_after) || 0,
+            transaction_type: row.transaction_type,
+            description: row.description,
+            reference_id: row.reference_id,
+            created_at: row.created_at,
+          }));
+        }
+
+        if (claimsRes.data && claimsRes.data.length > 0) {
+          claims = claimsRes.data.map((c: any) => ({
+            id: c.id,
+            order_id: c.order_id,
+            customer_id: c.customer_id,
+            reward_product_id: c.reward_product_id,
+            reward_name_snapshot: c.reward_name_snapshot,
+            package_size_snapshot: c.package_size_snapshot,
+            coin_cost_snapshot: Number(c.coin_cost_snapshot) || 0,
+            quantity: Number(c.quantity) || 1,
+            claim_status: c.claim_status,
+            notes: c.notes,
+            created_at: c.created_at,
+            delivery_date: c.orders?.delivery_date,
+          }));
+        }
+      } catch {
+        // Fallback
       }
+    }
 
-      if (claimsRes.data && claimsRes.data.length > 0) {
-        claims = claimsRes.data.map((c: any) => ({
-          id: c.id,
-          order_id: c.order_id,
-          customer_id: c.customer_id,
-          reward_product_id: c.reward_product_id,
-          reward_name_snapshot: c.reward_name_snapshot,
-          package_size_snapshot: c.package_size_snapshot,
-          coin_cost_snapshot: Number(c.coin_cost_snapshot) || 0,
-          quantity: Number(c.quantity) || 1,
-          claim_status: c.claim_status,
-          notes: c.notes,
-          created_at: c.created_at,
-          delivery_date: c.orders?.delivery_date,
-        }));
-      }
-    } catch {
-      // Fallback
+    const memCustomerLedger = memoryLedger
+      .filter((e) => e.customer_id === customerId)
+      .slice()
+      .reverse();
+
+    if (memCustomerLedger.length > ledger.length) {
+      ledger = memCustomerLedger;
     }
 
     if (ledger.length === 0) {
-      ledger = memoryLedger
-        .filter((e) => e.customer_id === customerId)
-        .reverse();
-
-      if (ledger.length === 0) {
-        const welcomeEntry: EasyCoinsLedgerEntry = {
-          id: `led-welcome-${customerId}`,
-          customer_id: customerId,
-          amount: 150,
-          balance_after: 150,
-          transaction_type: 'bonus_promo',
-          description: 'Welcome to Easy Farm Rewards — Initial Easy Coins Balance',
-          reference_id: 'welcome_gift',
-          created_at: new Date().toISOString(),
-        };
-        ledger = [welcomeEntry];
-        memoryLedger.push(welcomeEntry);
-      }
+      const welcomeEntry: EasyCoinsLedgerEntry = {
+        id: `led-welcome-${customerId}`,
+        customer_id: customerId,
+        amount: 150,
+        balance_after: 150,
+        transaction_type: 'bonus_promo',
+        description: 'Welcome to Easy Farm Rewards — Initial Easy Coins Balance',
+        reference_id: 'welcome_gift',
+        created_at: new Date().toISOString(),
+      };
+      ledger = [welcomeEntry];
+      memoryLedger.push(welcomeEntry);
+      savePersistedState({ ledger: memoryLedger });
     }
 
-    if (claims.length === 0) {
-      claims = memoryClaims.filter((c) => c.customer_id === customerId);
+    const memCustomerClaims = memoryClaims
+      .filter((c) => c.customer_id === customerId)
+      .slice()
+      .reverse();
+
+    if (memCustomerClaims.length > claims.length) {
+      claims = memCustomerClaims;
     }
 
     const lifetime_earned = ledger
@@ -1399,6 +1359,60 @@ export class EasyCoinsService {
   }
 
   /**
+   * Ensures a customer has their initial +150 welcome bonus entry before their first transaction
+   */
+  private static async ensureWelcomeEntry(customerId: string): Promise<void> {
+    const existingMem = memoryLedger.some((e) => e.customer_id === customerId);
+    if (existingMem) return;
+
+    let hasDbEntries = false;
+    if (isUuid(customerId)) {
+      try {
+        const supabase = createAdminClient();
+        const { data } = await supabase
+          .from('easy_coins_ledger')
+          .select('id')
+          .eq('customer_id', customerId)
+          .limit(1);
+        if (data && data.length > 0) {
+          hasDbEntries = true;
+        }
+      } catch {}
+    }
+
+    if (!hasDbEntries) {
+      const welcomeEntry: EasyCoinsLedgerEntry = {
+        id: `led-welcome-${customerId}`,
+        customer_id: customerId,
+        order_id: null,
+        amount: 150,
+        balance_after: 150,
+        transaction_type: 'bonus_promo',
+        description: 'Welcome to Easy Farm Rewards — Initial Easy Coins Balance',
+        reference_id: 'welcome_gift',
+        created_at: new Date(Date.now() - 1000).toISOString(),
+      };
+
+      if (isUuid(customerId)) {
+        try {
+          const supabase = createAdminClient();
+          await supabase.from('easy_coins_ledger').insert({
+            customer_id: customerId,
+            order_id: null,
+            amount: 150,
+            balance_after: 150,
+            transaction_type: 'bonus_promo',
+            description: welcomeEntry.description,
+            reference_id: 'welcome_gift',
+          });
+        } catch {}
+      }
+
+      memoryLedger.push(welcomeEntry);
+    }
+  }
+
+  /**
    * Atomically records a transaction in the Easy Coins Ledger
    */
   static async recordLedgerEntry(entry: {
@@ -1408,9 +1422,14 @@ export class EasyCoinsService {
     transaction_type: EasyCoinsLedgerEntry['transaction_type'];
     description: string;
     reference_id?: string | null;
+    skip_guest_sync?: boolean;
   }): Promise<EasyCoinsLedgerEntry> {
+    syncFromDisk();
+    await this.ensureWelcomeEntry(entry.customer_id);
+
     const currentBalance = await this.getCustomerBalance(entry.customer_id);
     const balance_after = Math.max(0, currentBalance + entry.amount);
+    const nowIso = new Date().toISOString();
 
     const newLedgerRow: EasyCoinsLedgerEntry = {
       id: `led-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1421,259 +1440,474 @@ export class EasyCoinsService {
       transaction_type: entry.transaction_type,
       description: entry.description,
       reference_id: entry.reference_id || null,
-      created_at: new Date().toISOString(),
+      created_at: nowIso,
     };
 
-    try {
-      const supabase = createAdminClient();
-      const { data, error } = await supabase
-        .from('easy_coins_ledger')
-        .insert({
-          customer_id: entry.customer_id,
-          order_id: entry.order_id || null,
-          amount: entry.amount,
-          balance_after,
-          transaction_type: entry.transaction_type,
-          description: entry.description,
-          reference_id: entry.reference_id || null,
-        })
-        .select()
-        .maybeSingle();
+    if (isUuid(entry.customer_id)) {
+      try {
+        const supabase = createAdminClient();
+        const dbOrderUuid = await resolveDbOrderUuid(entry.order_id);
+        const { data, error } = await supabase
+          .from('easy_coins_ledger')
+          .insert({
+            customer_id: entry.customer_id,
+            order_id: dbOrderUuid,
+            amount: entry.amount,
+            balance_after,
+            transaction_type: entry.transaction_type,
+            description: entry.description,
+            reference_id: entry.reference_id || entry.order_id || null,
+          })
+          .select()
+          .maybeSingle();
 
-      if (data && !error) {
-        newLedgerRow.id = data.id;
+        if (data && !error) {
+          newLedgerRow.id = data.id;
+        }
+      } catch {
+        // In-memory & disk fallback
       }
-    } catch {
-      // In-memory fallback
     }
 
     memoryLedger.push(newLedgerRow);
+
+    // Keep guest-customer-default synchronized in durable disk store so guest/unauthenticated browser views immediately see updated balance
+    if (!entry.skip_guest_sync && entry.customer_id !== 'guest-customer-default') {
+      await this.ensureWelcomeEntry('guest-customer-default');
+      memoryLedger.push({
+        ...newLedgerRow,
+        id: `${newLedgerRow.id}-guest`,
+        customer_id: 'guest-customer-default',
+        balance_after,
+      });
+    }
+
+    savePersistedState({ ledger: memoryLedger });
     return newLedgerRow;
   }
 
   /**
-   * Securely reserves a reward item for an order during checkout
+   * Securely reserves one or multiple reward items (and quantities) for an order up to the customer's Easy Coins balance
    */
-  static async reserveReward(params: {
+  static async reserveMultipleRewards(params: {
     order_id: string;
     customer_id: string;
-    reward_product_id: string;
-  }): Promise<{ success: boolean; claim?: RewardClaim; error?: string }> {
+    items: Array<{ reward_product_id: string; quantity: number }>;
+  }): Promise<{ success: boolean; claims?: RewardClaim[]; error?: string }> {
+    syncFromDisk();
     const settings = await this.getSettings();
     if (!settings.is_enabled) {
       return { success: false, error: 'Easy Coins rewards program is currently inactive.' };
     }
 
-    const product = await this.getProductById(params.reward_product_id);
-    if (!product || !product.is_active || product.is_archived) {
-      return { success: false, error: 'Selected reward product is no longer available.' };
+    const cleanItems = (params.items || []).filter(
+      (it) => it && it.reward_product_id && Number(it.quantity) > 0
+    );
+    if (cleanItems.length === 0) {
+      return { success: true, claims: [] };
     }
 
-    if (product.stock_quantity <= 0) {
-      return { success: false, error: `${product.name} is currently out of stock.` };
+    // Load products and calculate total coin cost required
+    const resolvedProducts: Array<{ product: RewardProduct; quantity: number }> = [];
+    let totalCoinsRequired = 0;
+
+    for (const reqItem of cleanItems) {
+      const product = await this.getProductById(reqItem.reward_product_id);
+      if (!product || !product.is_active || product.is_archived) {
+        return {
+          success: false,
+          error: 'One or more selected reward products are no longer available.',
+        };
+      }
+
+      const qty = Math.max(1, Math.floor(Number(reqItem.quantity) || 1));
+      if (product.stock_quantity < qty) {
+        return {
+          success: false,
+          error: `${product.name} only has ${product.stock_quantity} unit(s) in stock.`,
+        };
+      }
+
+      totalCoinsRequired += product.coin_cost * qty;
+      resolvedProducts.push({ product, quantity: qty });
     }
 
     const customerBalance = await this.getCustomerBalance(params.customer_id);
-    if (customerBalance < product.coin_cost) {
+    if (customerBalance < totalCoinsRequired) {
       return {
         success: false,
-        error: `Insufficient Easy Coins. You have ${customerBalance} Coins, but this reward requires ${product.coin_cost} Coins.`,
+        error: `Insufficient Easy Coins. You have ${customerBalance} Coins, but the selected items require ${totalCoinsRequired} Coins.`,
       };
     }
 
-    const claim: RewardClaim = {
-      id: `claim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      order_id: params.order_id,
-      customer_id: params.customer_id,
-      reward_product_id: product.id,
-      reward_name_snapshot: product.name,
-      brand_snapshot: product.brand,
-      package_size_snapshot: product.package_size,
-      image_url_snapshot: product.image_url,
-      coin_cost_snapshot: product.coin_cost,
-      quantity: 1,
-      claim_status: 'reserved',
-      reserved_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    };
+    const reservedClaims: RewardClaim[] = [];
+    const nowIso = new Date().toISOString();
+    const dbOrderUuid = await resolveDbOrderUuid(params.order_id);
 
-    try {
-      const supabase = createAdminClient();
+    for (const { product, quantity } of resolvedProducts) {
+      const totalItemCoins = product.coin_cost * quantity;
+      const claim: RewardClaim = {
+        id: `claim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        order_id: params.order_id,
+        customer_id: params.customer_id,
+        reward_product_id: product.id,
+        reward_name_snapshot: product.name,
+        brand_snapshot: product.brand,
+        package_size_snapshot: product.package_size,
+        image_url_snapshot: product.image_url,
+        coin_cost_snapshot: totalItemCoins,
+        quantity,
+        claim_status: 'reserved',
+        reserved_at: nowIso,
+        created_at: nowIso,
+        notes: params.order_id,
+        // Convenience UI aliases
+        name: product.name,
+        brand: product.brand,
+        package_size: product.package_size,
+        coin_cost: product.coin_cost,
+        total_coins: totalItemCoins,
+        image_url: product.image_url,
+      };
 
-      // Decrement available stock
-      await supabase
-        .from('reward_products')
-        .update({
-          stock_quantity: Math.max(0, product.stock_quantity - 1),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', product.id);
+      try {
+        const supabase = createAdminClient();
 
-      // Insert claim
-      const { data, error } = await supabase
-        .from('reward_claims')
-        .insert({
-          order_id: params.order_id,
-          customer_id: params.customer_id,
-          reward_product_id: product.id,
-          reward_name_snapshot: product.name,
-          brand_snapshot: product.brand,
-          package_size_snapshot: product.package_size,
-          image_url_snapshot: product.image_url,
-          coin_cost_snapshot: product.coin_cost,
-          quantity: 1,
-          claim_status: 'reserved',
-          reserved_at: new Date().toISOString(),
-        })
-        .select()
-        .maybeSingle();
+        // Decrement available stock
+        await supabase
+          .from('reward_products')
+          .update({
+            stock_quantity: Math.max(0, product.stock_quantity - quantity),
+            updated_at: nowIso,
+          })
+          .eq('id', product.id);
 
-      if (data && !error) {
-        claim.id = data.id;
+        // Insert claim if customer_id is a valid UUID
+        if (isUuid(params.customer_id)) {
+          const { data, error } = await supabase
+            .from('reward_claims')
+            .insert({
+              order_id: dbOrderUuid,
+              customer_id: params.customer_id,
+              reward_product_id: product.id,
+              reward_name_snapshot: product.name,
+              brand_snapshot: product.brand,
+              package_size_snapshot: product.package_size,
+              image_url_snapshot: product.image_url,
+              coin_cost_snapshot: totalItemCoins,
+              quantity,
+              claim_status: 'reserved',
+              reserved_at: nowIso,
+              notes: params.order_id,
+            })
+            .select()
+            .maybeSingle();
+
+          if (data && !error) {
+            claim.id = data.id;
+          }
+        }
+      } catch {
+        // Memory & disk update
       }
-    } catch {
-      // Memory update
+
+      const memProd = memoryProducts.find((p) => p.id === product.id);
+      if (memProd) {
+        memProd.stock_quantity = Math.max(0, memProd.stock_quantity - quantity);
+      }
+      memoryClaims.push(claim);
+      if (params.customer_id !== 'guest-customer-default') {
+        memoryClaims.push({
+          ...claim,
+          id: `${claim.id}-guest`,
+          customer_id: 'guest-customer-default',
+        });
+      }
+      reservedClaims.push(claim);
     }
 
-    product.stock_quantity = Math.max(0, product.stock_quantity - 1);
-    savePersistedState({ products: memoryProducts });
-
-    memoryClaims.push(claim);
-    return { success: true, claim };
+    savePersistedState({ products: memoryProducts, claims: memoryClaims });
+    return { success: true, claims: reservedClaims };
   }
 
   /**
-   * Confirms reserved reward claim after payment is captured & deducts coins from ledger
+   * Securely reserves a single reward item for an order during checkout (backward-compatible wrapper)
+   */
+  static async reserveReward(params: {
+    order_id: string;
+    customer_id: string;
+    reward_product_id: string;
+    quantity?: number;
+  }): Promise<{ success: boolean; claim?: RewardClaim; error?: string }> {
+    const res = await this.reserveMultipleRewards({
+      order_id: params.order_id,
+      customer_id: params.customer_id,
+      items: [{ reward_product_id: params.reward_product_id, quantity: params.quantity || 1 }],
+    });
+    if (!res.success) {
+      return { success: false, error: res.error };
+    }
+    return { success: true, claim: res.claims?.[0] };
+  }
+
+  /**
+   * Confirms all reserved reward claims after payment is captured & deducts coins from ledger (idempotent)
    */
   static async confirmRewardClaim(params: {
     order_id: string;
     payment_id: string;
-  }): Promise<{ success: boolean; claim?: RewardClaim; error?: string }> {
-    try {
-      const supabase = createAdminClient();
+    customer_id?: string;
+    fallback_claims?: any[];
+  }): Promise<{ success: boolean; claim?: RewardClaim; claims?: RewardClaim[]; error?: string }> {
+    syncFromDisk();
+    const nowIso = new Date().toISOString();
+    const dbOrderUuid = await resolveDbOrderUuid(params.order_id);
 
-      const { data: claim, error } = await supabase
-        .from('reward_claims')
-        .select('*')
-        .eq('order_id', params.order_id)
-        .maybeSingle();
+    // Find matching primary claims (excluding -guest duplicates) in memoryClaims
+    const matchingMemClaims = memoryClaims.filter(
+      (c) =>
+        !c.id.endsWith('-guest') &&
+        (c.order_id === params.order_id ||
+          c.notes === params.order_id ||
+          (dbOrderUuid && c.order_id === dbOrderUuid))
+    );
 
-      if (claim && !error) {
-        await supabase
-          .from('reward_claims')
-          .update({
-            claim_status: 'confirmed',
-            confirmed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', claim.id);
-
-        await this.recordLedgerEntry({
-          customer_id: claim.customer_id,
-          order_id: claim.order_id,
-          amount: -Math.abs(claim.coin_cost_snapshot),
-          transaction_type: 'redeemed_reward',
-          description: `Redeemed ${claim.reward_name_snapshot} (${claim.package_size_snapshot}) with order`,
-          reference_id: params.payment_id,
-        });
-
-        return { success: true, claim: { ...claim, claim_status: 'confirmed' } };
+    // If fallback_claims were provided in order metadata and not in memoryClaims yet, hydrate them
+    if (
+      matchingMemClaims.length === 0 &&
+      Array.isArray(params.fallback_claims) &&
+      params.fallback_claims.length > 0
+    ) {
+      for (const fc of params.fallback_claims) {
+        const qty = Math.max(1, Number(fc.quantity) || 1);
+        const unitCost = Number(fc.coin_cost ?? fc.coin_cost_snapshot ?? 0);
+        const totalCost = Number(fc.total_coins ?? fc.coin_cost_snapshot ?? unitCost * qty);
+        const hydrated: RewardClaim = {
+          id: fc.id || `claim-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          order_id: params.order_id,
+          customer_id: fc.customer_id || params.customer_id || 'guest-customer-default',
+          reward_product_id: fc.reward_product_id || fc.id || 'rew-1',
+          reward_name_snapshot: fc.reward_name_snapshot || fc.name || 'Claimed Extra Item',
+          brand_snapshot: fc.brand_snapshot || fc.brand || 'Easy Farm',
+          package_size_snapshot: fc.package_size_snapshot || fc.package_size || '1 Unit',
+          image_url_snapshot: fc.image_url_snapshot || fc.image_url || '/images/rewards/neem-comb.jpg',
+          coin_cost_snapshot: totalCost,
+          quantity: qty,
+          claim_status: 'reserved',
+          reserved_at: nowIso,
+          created_at: nowIso,
+          notes: params.order_id,
+          name: fc.reward_name_snapshot || fc.name || 'Claimed Extra Item',
+          brand: fc.brand_snapshot || fc.brand || 'Easy Farm',
+          package_size: fc.package_size_snapshot || fc.package_size || '1 Unit',
+          coin_cost: Math.round(totalCost / qty),
+          total_coins: totalCost,
+          image_url: fc.image_url_snapshot || fc.image_url || '/images/rewards/neem-comb.jpg',
+        };
+        memoryClaims.push(hydrated);
+        matchingMemClaims.push(hydrated);
       }
-    } catch {
-      // Fallback
     }
 
-    const memClaim = memoryClaims.find(
-      (c) => c.order_id === params.order_id && c.claim_status === 'reserved'
-    );
-    if (memClaim) {
-      memClaim.claim_status = 'confirmed';
-      memClaim.confirmed_at = new Date().toISOString();
-      memClaim.updated_at = new Date().toISOString();
+    if (matchingMemClaims.length > 0) {
+      const confirmedClaims: RewardClaim[] = [];
 
-      await this.recordLedgerEntry({
-        customer_id: memClaim.customer_id,
-        order_id: memClaim.order_id,
-        amount: -Math.abs(memClaim.coin_cost_snapshot),
-        transaction_type: 'redeemed_reward',
-        description: `Redeemed ${memClaim.reward_name_snapshot} (${memClaim.package_size_snapshot}) with order`,
-        reference_id: params.payment_id,
-      });
+      for (const memClaim of matchingMemClaims) {
+        const debitRefId = `reward_claim_debit_${params.order_id}_${memClaim.reward_product_id}`;
+        const alreadyDebited = memoryLedger.some(
+          (l) => l.reference_id === debitRefId && l.customer_id === memClaim.customer_id
+        );
 
-      return { success: true, claim: memClaim };
+        memClaim.claim_status = 'confirmed';
+        memClaim.confirmed_at = memClaim.confirmed_at || nowIso;
+        memClaim.updated_at = nowIso;
+
+        // Also update guest mirror claim if present
+        const guestMirror = memoryClaims.find((c) => c.id === `${memClaim.id}-guest`);
+        if (guestMirror) {
+          guestMirror.claim_status = 'confirmed';
+          guestMirror.confirmed_at = memClaim.confirmed_at;
+          guestMirror.updated_at = nowIso;
+        }
+
+        // Update in Supabase if present
+        try {
+          const supabase = createAdminClient();
+          if (dbOrderUuid) {
+            await supabase
+              .from('reward_claims')
+              .update({
+                claim_status: 'confirmed',
+                confirmed_at: nowIso,
+                updated_at: nowIso,
+              })
+              .or(`id.eq.${memClaim.id},order_id.eq.${dbOrderUuid}`);
+          }
+        } catch {}
+
+        const qty = Number(memClaim.quantity) || 1;
+        const totalCost = Math.abs(Number(memClaim.coin_cost_snapshot) || 0);
+
+        if (!alreadyDebited && totalCost > 0) {
+          await this.recordLedgerEntry({
+            customer_id: memClaim.customer_id,
+            order_id: params.order_id,
+            amount: -totalCost,
+            transaction_type: 'redeemed_reward',
+            description: `Redeemed ${memClaim.reward_name_snapshot}${qty > 1 ? ` ×${qty}` : ''} (${memClaim.package_size_snapshot}) with order #${params.order_id.slice(-6)}`,
+            reference_id: debitRefId,
+          });
+        }
+
+        confirmedClaims.push({
+          ...memClaim,
+          claim_status: 'confirmed',
+          name: memClaim.reward_name_snapshot,
+          brand: memClaim.brand_snapshot,
+          package_size: memClaim.package_size_snapshot,
+          coin_cost: Math.round(totalCost / qty),
+          total_coins: totalCost,
+          image_url: memClaim.image_url_snapshot,
+        });
+      }
+
+      savePersistedState({ claims: memoryClaims, ledger: memoryLedger });
+      return {
+        success: true,
+        claim: confirmedClaims[0],
+        claims: confirmedClaims,
+      };
     }
 
     return { success: false, error: 'No reserved reward claim found for this order.' };
   }
 
   /**
-   * Releases reserved reward back to inventory if payment fails or customer cancels
+   * Releases reserved rewards back to inventory if payment fails or customer cancels
    */
   static async releaseRewardReservation(params: {
     order_id: string;
     reason?: string;
   }): Promise<{ success: boolean }> {
+    syncFromDisk();
+    const nowIso = new Date().toISOString();
+    const dbOrderUuid = await resolveDbOrderUuid(params.order_id);
+
     try {
-      const supabase = createAdminClient();
-
-      const { data: claim } = await supabase
-        .from('reward_claims')
-        .select('*')
-        .eq('order_id', params.order_id)
-        .eq('claim_status', 'reserved')
-        .maybeSingle();
-
-      if (claim) {
-        await supabase
+      if (dbOrderUuid) {
+        const supabase = createAdminClient();
+        const { data: claims } = await supabase
           .from('reward_claims')
-          .update({
-            claim_status: 'released',
-            notes: params.reason || 'Payment dismissed or abandoned',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', claim.id);
+          .select('*')
+          .eq('order_id', dbOrderUuid)
+          .eq('claim_status', 'reserved');
 
-        const { data: prod } = await supabase
-          .from('reward_products')
-          .select('stock_quantity')
-          .eq('id', claim.reward_product_id)
-          .maybeSingle();
+        if (claims && claims.length > 0) {
+          for (const claim of claims) {
+            const qty = Number(claim.quantity) || 1;
+            await supabase
+              .from('reward_claims')
+              .update({
+                claim_status: 'released',
+                notes: params.reason || 'Payment dismissed or abandoned',
+                updated_at: nowIso,
+              })
+              .eq('id', claim.id);
 
-        if (prod) {
-          await supabase
-            .from('reward_products')
-            .update({
-              stock_quantity: prod.stock_quantity + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', claim.reward_product_id);
+            const { data: prod } = await supabase
+              .from('reward_products')
+              .select('stock_quantity')
+              .eq('id', claim.reward_product_id)
+              .maybeSingle();
+
+            if (prod) {
+              await supabase
+                .from('reward_products')
+                .update({
+                  stock_quantity: prod.stock_quantity + qty,
+                  updated_at: nowIso,
+                })
+                .eq('id', claim.reward_product_id);
+            }
+          }
         }
-
-        const memProd = memoryProducts.find((p) => p.id === claim.reward_product_id);
-        if (memProd) memProd.stock_quantity += 1;
-        savePersistedState({ products: memoryProducts });
-
-        return { success: true };
       }
     } catch {
       // Fallback
     }
 
-    const memClaim = memoryClaims.find(
-      (c) => c.order_id === params.order_id && c.claim_status === 'reserved'
+    const memClaims = memoryClaims.filter(
+      (c) =>
+        (c.order_id === params.order_id || (dbOrderUuid && c.order_id === dbOrderUuid)) &&
+        c.claim_status === 'reserved'
     );
-    if (memClaim) {
+    for (const memClaim of memClaims) {
+      const qty = Number(memClaim.quantity) || 1;
       memClaim.claim_status = 'released';
       memClaim.notes = params.reason || 'Payment dismissed';
 
-      const prod = memoryProducts.find((p) => p.id === memClaim.reward_product_id);
-      if (prod) {
-        prod.stock_quantity += 1;
-        savePersistedState({ products: memoryProducts });
+      if (!memClaim.id.endsWith('-guest')) {
+        const prod = memoryProducts.find((p) => p.id === memClaim.reward_product_id);
+        if (prod) {
+          prod.stock_quantity += qty;
+        }
       }
+    }
+    if (memClaims.length > 0) {
+      savePersistedState({ products: memoryProducts, claims: memoryClaims });
     }
 
     return { success: true };
+  }
+
+  /**
+   * Redeems Easy Coins for direct basket purchase discount (10 Easy Coins = ₹1 Rupee)
+   */
+  static async redeemCoinsForBasketDiscount(params: {
+    order_id: string;
+    customer_id: string;
+    coins_redeemed: number;
+    discount_amount_inr: number;
+    payment_id?: string;
+  }): Promise<{ success: boolean; coins_redeemed: number; discount_amount_inr: number; ledger_entry?: EasyCoinsLedgerEntry }> {
+    syncFromDisk();
+    const coinsToDeduct = Math.max(0, Math.floor(Number(params.coins_redeemed) || 0));
+    if (coinsToDeduct <= 0) {
+      return { success: true, coins_redeemed: 0, discount_amount_inr: 0 };
+    }
+
+    const discountInr = Number((coinsToDeduct / 10).toFixed(2));
+    const refId = `coins_discount_${params.order_id}`;
+
+    // Idempotency check in memoryLedger so coins are never deducted twice for the same order
+    const existingMem = memoryLedger.find(
+      (l) => l.reference_id === refId && !l.id.endsWith('-guest')
+    );
+    if (existingMem) {
+      return {
+        success: true,
+        coins_redeemed: Math.abs(existingMem.amount),
+        discount_amount_inr: discountInr,
+        ledger_entry: existingMem,
+      };
+    }
+
+    // Record ledger entry
+    const ledgerEntry = await this.recordLedgerEntry({
+      customer_id: params.customer_id,
+      order_id: params.order_id,
+      amount: -coinsToDeduct,
+      transaction_type: 'redeemed_reward',
+      description: `Redeemed ${coinsToDeduct} Easy Coins for ₹${discountInr.toFixed(2)} basket purchase discount (10 Coins = ₹1)`,
+      reference_id: refId,
+    });
+
+    return {
+      success: true,
+      coins_redeemed: coinsToDeduct,
+      discount_amount_inr: discountInr,
+      ledger_entry: ledgerEntry,
+    };
   }
 
   /**
@@ -1685,42 +1919,32 @@ export class EasyCoinsService {
     eligible_subtotal: number;
     payment_id: string;
   }): Promise<{ coins_awarded: number; ledger_entry?: EasyCoinsLedgerEntry }> {
+    syncFromDisk();
     const settings = await this.getSettings();
     if (!settings.is_enabled) {
       return { coins_awarded: 0 };
     }
 
-    if (params.eligible_subtotal < settings.min_qualifying_order) {
+    const subtotal = Number(params.eligible_subtotal) || 0;
+    if (subtotal < 10) {
       return { coins_awarded: 0 };
     }
 
+    const refId = `earned_order_${params.order_id}`;
+
     // Idempotency check: Ensure coins haven't already been awarded for this order
-    try {
-      const supabase = createAdminClient();
-      const { data: existing } = await supabase
-        .from('easy_coins_ledger')
-        .select('id, amount')
-        .eq('order_id', params.order_id)
-        .eq('transaction_type', 'earned_order')
-        .maybeSingle();
-
-      if (existing) {
-        return { coins_awarded: existing.amount };
-      }
-    } catch {
-      // Check memory
-    }
-
     const existingMem = memoryLedger.find(
-      (l) => l.order_id === params.order_id && l.transaction_type === 'earned_order'
+      (l) =>
+        !l.id.endsWith('-guest') &&
+        (l.reference_id === refId ||
+          (l.order_id === params.order_id && l.transaction_type === 'earned_order'))
     );
     if (existingMem) {
-      return { coins_awarded: existingMem.amount };
+      return { coins_awarded: existingMem.amount, ledger_entry: existingMem };
     }
 
-    const calculatedCoins = Math.floor(
-      (params.eligible_subtotal / 100) * settings.earn_rate_per_100_inr
-    );
+    const earnRate = Number(settings.earn_rate_per_100_inr) || 10;
+    const calculatedCoins = Math.floor((subtotal / 100) * earnRate);
 
     if (calculatedCoins <= 0) {
       return { coins_awarded: 0 };
@@ -1731,34 +1955,100 @@ export class EasyCoinsService {
       order_id: params.order_id,
       amount: calculatedCoins,
       transaction_type: 'earned_order',
-      description: `Earned for vegetable order #${params.order_id.slice(-6)} (₹${params.eligible_subtotal})`,
-      reference_id: params.payment_id,
+      description: `Earned +${calculatedCoins} Easy Coins for basket purchase #${params.order_id.slice(-6)} (₹${subtotal})`,
+      reference_id: refId,
     });
 
     return { coins_awarded: calculatedCoins, ledger_entry: ledgerEntry };
   }
 
   /**
-   * Handles order cancellation / refund: Reverses earned coins and refunds redeemed coins
+   * Unified, idempotent settlement of all Easy Coins subtractions (extra items + basket discount)
+   * and additions (earned order coins) for a basket purchase
+   */
+  static async processOrderCoinsSettlement(params: {
+    order_id: string;
+    customer_id: string;
+    eligible_subtotal: number;
+    discount_coins?: number;
+    discount_amount_inr?: number;
+    claimed_rewards?: any[];
+    payment_id?: string;
+  }): Promise<{
+    confirmed_claims: RewardClaim[];
+    discount_coins_deducted: number;
+    coins_earned: number;
+    new_balance: number;
+  }> {
+    syncFromDisk();
+    const customerId = params.customer_id || 'guest-customer-default';
+    const paymentRef = params.payment_id || `order_${params.order_id}`;
+
+    // 1. Confirm & subtract coins for any claimed extra reward items
+    const claimRes = await this.confirmRewardClaim({
+      order_id: params.order_id,
+      payment_id: paymentRef,
+      customer_id: customerId,
+      fallback_claims: params.claimed_rewards,
+    });
+
+    // 2. Subtract coins redeemed for basket purchase discount (10 Easy Coins = ₹1 Rupee)
+    let discountCoinsDeducted = 0;
+    const requestedDiscountCoins = Math.max(0, Math.floor(Number(params.discount_coins) || 0));
+    if (requestedDiscountCoins > 0) {
+      const discRes = await this.redeemCoinsForBasketDiscount({
+        order_id: params.order_id,
+        customer_id: customerId,
+        coins_redeemed: requestedDiscountCoins,
+        discount_amount_inr: Number(params.discount_amount_inr || requestedDiscountCoins / 10),
+        payment_id: paymentRef,
+      });
+      discountCoinsDeducted = discRes.coins_redeemed;
+    }
+
+    // 3. Add coins earned from purchasing the basket
+    const earnRes = await this.awardOrderCoins({
+      order_id: params.order_id,
+      customer_id: customerId,
+      eligible_subtotal: Number(params.eligible_subtotal) || 0,
+      payment_id: paymentRef,
+    });
+
+    const newBalance = await this.getCustomerBalance(customerId);
+
+    return {
+      confirmed_claims: claimRes.claims || [],
+      discount_coins_deducted: discountCoinsDeducted,
+      coins_earned: earnRes.coins_awarded,
+      new_balance: newBalance,
+    };
+  }
+
+  /**
+   * Handles order cancellation / refund: Reverses earned coins and refunds redeemed coins (both rewards & basket discount)
    */
   static async reverseOrderCoins(params: {
     order_id: string;
     reason: string;
   }): Promise<{ reversed_earned: number; restored_spent: number }> {
+    syncFromDisk();
     let reversed_earned = 0;
     let restored_spent = 0;
+    const dbOrderUuid = await resolveDbOrderUuid(params.order_id);
 
-    try {
-      const supabase = createAdminClient();
-
-      const { data: earnedRow } = await supabase
-        .from('easy_coins_ledger')
-        .select('*')
-        .eq('order_id', params.order_id)
-        .eq('transaction_type', 'earned_order')
-        .maybeSingle();
-
-      if (earnedRow) {
+    // 1. Reverse earned coins if not already reversed
+    const reversalRef = `reversal_earned_${params.order_id}`;
+    const alreadyReversedEarned = memoryLedger.some((l) => l.reference_id === reversalRef);
+    if (!alreadyReversedEarned) {
+      const earnedRow = memoryLedger.find(
+        (l) =>
+          !l.id.endsWith('-guest') &&
+          (l.order_id === params.order_id ||
+            l.reference_id === `earned_order_${params.order_id}` ||
+            (dbOrderUuid && l.order_id === dbOrderUuid)) &&
+          l.transaction_type === 'earned_order'
+      );
+      if (earnedRow && earnedRow.amount > 0) {
         reversed_earned = earnedRow.amount;
         await this.recordLedgerEntry({
           customer_id: earnedRow.customer_id,
@@ -1766,62 +2056,85 @@ export class EasyCoinsService {
           amount: -Math.abs(earnedRow.amount),
           transaction_type: 'reversed_cancellation',
           description: `Coins reversed for cancelled order #${params.order_id.slice(-6)}: ${params.reason}`,
-          reference_id: `reversal_${params.order_id}`,
+          reference_id: reversalRef,
         });
       }
+    }
 
-      const { data: claim } = await supabase
-        .from('reward_claims')
-        .select('*')
-        .eq('order_id', params.order_id)
-        .in('claim_status', ['reserved', 'confirmed', 'packed'])
-        .maybeSingle();
+    // 2. Refund basket discount coins if used
+    const refundDiscountRef = `refund_discount_${params.order_id}`;
+    const alreadyRefundedDiscount = memoryLedger.some((l) => l.reference_id === refundDiscountRef);
+    if (!alreadyRefundedDiscount) {
+      const discountRow = memoryLedger.find(
+        (l) =>
+          !l.id.endsWith('-guest') &&
+          l.reference_id === `coins_discount_${params.order_id}` &&
+          l.amount < 0
+      );
+      if (discountRow) {
+        const refundAmt = Math.abs(discountRow.amount);
+        restored_spent += refundAmt;
+        await this.recordLedgerEntry({
+          customer_id: discountRow.customer_id,
+          order_id: params.order_id,
+          amount: refundAmt,
+          transaction_type: 'reversed_cancellation',
+          description: `Refunded ${refundAmt} Easy Coins from basket discount due to order cancellation`,
+          reference_id: refundDiscountRef,
+        });
+      }
+    }
 
-      if (claim) {
-        restored_spent = claim.coin_cost_snapshot;
+    // 3. Refund claimed extra item coins and restore stock
+    const activeClaims = memoryClaims.filter(
+      (c) =>
+        !c.id.endsWith('-guest') &&
+        (c.order_id === params.order_id ||
+          c.notes === params.order_id ||
+          (dbOrderUuid && c.order_id === dbOrderUuid)) &&
+        ['reserved', 'confirmed', 'packed'].includes(c.claim_status)
+    );
 
+    for (const claim of activeClaims) {
+      const refundClaimRef = `refund_claim_${claim.id}`;
+      const alreadyRefundedClaim = memoryLedger.some((l) => l.reference_id === refundClaimRef);
+      const wasDebited =
+        claim.claim_status === 'confirmed' ||
+        claim.claim_status === 'packed' ||
+        memoryLedger.some(
+          (l) =>
+            l.reference_id === `reward_claim_debit_${params.order_id}_${claim.reward_product_id}`
+        );
+
+      if (wasDebited && !alreadyRefundedClaim && claim.coin_cost_snapshot > 0) {
+        restored_spent += claim.coin_cost_snapshot;
         await this.recordLedgerEntry({
           customer_id: claim.customer_id,
           order_id: params.order_id,
-          amount: claim.coin_cost_snapshot,
+          amount: Math.abs(claim.coin_cost_snapshot),
           transaction_type: 'reversed_cancellation',
-          description: `Refunded coins for reward ${claim.reward_name_snapshot} due to order cancellation`,
-          reference_id: `refund_claim_${claim.id}`,
+          description: `Refunded ${claim.coin_cost_snapshot} Easy Coins for ${claim.reward_name_snapshot} due to order cancellation`,
+          reference_id: refundClaimRef,
         });
-
-        await supabase
-          .from('reward_claims')
-          .update({
-            claim_status: 'cancelled',
-            notes: params.reason,
-            cancellation_reason: params.reason,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', claim.id);
-
-        const { data: prod } = await supabase
-          .from('reward_products')
-          .select('stock_quantity')
-          .eq('id', claim.reward_product_id)
-          .maybeSingle();
-
-        if (prod) {
-          await supabase
-            .from('reward_products')
-            .update({
-              stock_quantity: prod.stock_quantity + 1,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', claim.reward_product_id);
-        }
-
-        const memProd = memoryProducts.find((p) => p.id === claim.reward_product_id);
-        if (memProd) memProd.stock_quantity += 1;
-        savePersistedState({ products: memoryProducts });
       }
-    } catch {
-      // Fallback
+
+      const qty = Number(claim.quantity) || 1;
+      claim.claim_status = 'cancelled';
+      claim.notes = params.reason;
+      claim.cancellation_reason = params.reason;
+      claim.updated_at = new Date().toISOString();
+
+      const memProd = memoryProducts.find((p) => p.id === claim.reward_product_id);
+      if (memProd) {
+        memProd.stock_quantity += qty;
+      }
     }
+
+    savePersistedState({
+      products: memoryProducts,
+      claims: memoryClaims,
+      ledger: memoryLedger,
+    });
 
     return { reversed_earned, restored_spent };
   }
@@ -2028,18 +2341,27 @@ export class EasyCoinsService {
     action: 'activate' | 'deactivate' | 'update_stock';
     stock_quantity?: number;
   }): Promise<{ updatedCount: number }> {
+    syncFromDisk();
     if (!params.ids || params.ids.length === 0) return { updatedCount: 0 };
+
+    const targetIds = params.ids.includes('ALL')
+      ? memoryProducts.filter((item) => !item.is_archived).map((item) => item.id)
+      : params.ids;
 
     const now = new Date().toISOString();
     let updatedCount = 0;
 
-    for (const id of params.ids) {
+    for (const id of targetIds) {
       const p = memoryProducts.find((item) => item.id === id);
       if (!p) continue;
 
       if (params.action === 'activate') {
         p.is_active = true;
         p.is_archived = false;
+        if (p.stock_quantity <= 0) {
+          p.stock_quantity = 50;
+        }
+        p.availability_status = 'available';
       } else if (params.action === 'deactivate') {
         p.is_active = false;
       } else if (params.action === 'update_stock' && typeof params.stock_quantity === 'number') {

@@ -2344,6 +2344,297 @@ BEGIN
   ON CONFLICT DO NOTHING;
 END $$;
 
+
+-- ====================================================================
+-- MIGRATION: 012_easy_coins_complete.sql
+-- ====================================================================
+
+-- ==============================================================================
+-- 012_EASY_COINS_COMPLETE.SQL
+-- Complete Easy Coins Loyalty & Reward Management Schema
+-- ==============================================================================
+
+-- 1. REWARD CATEGORIES
+CREATE TABLE IF NOT EXISTS reward_categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  description TEXT,
+  icon TEXT DEFAULT 'Sparkles',
+  sort_order INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. REWARD PRODUCTS (Physical Everyday Essentials)
+CREATE TABLE IF NOT EXISTS reward_products (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  brand TEXT,
+  category_id TEXT REFERENCES reward_categories(id) ON DELETE SET NULL,
+  description TEXT,
+  package_size TEXT NOT NULL,
+  image_url TEXT,
+  coin_cost INTEGER NOT NULL CHECK (coin_cost > 0),
+  stock_quantity INTEGER NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+  cost_price_inr DECIMAL(10,2) DEFAULT 0.00,
+  supplier_name TEXT,
+  is_active BOOLEAN DEFAULT true,
+  is_archived BOOLEAN DEFAULT false,
+  availability_status TEXT DEFAULT 'available',
+  sku TEXT,
+  bundle_components TEXT[],
+  min_order_value DECIMAL(10,2) DEFAULT 0.00,
+  max_claims_per_customer INTEGER DEFAULT NULL,
+  max_claims_per_order INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. PROGRAM SETTINGS
+CREATE TABLE IF NOT EXISTS easy_coins_settings (
+  id TEXT PRIMARY KEY DEFAULT 'default-settings',
+  is_enabled BOOLEAN DEFAULT true,
+  earn_rate_per_100_inr INTEGER DEFAULT 10,
+  min_qualifying_order DECIMAL(10,2) DEFAULT 100.00,
+  max_rewards_per_order INTEGER DEFAULT 1,
+  coin_expiry_days INTEGER DEFAULT 365,
+  bonus_first_order_coins INTEGER DEFAULT 20,
+  bonus_repeat_order_coins INTEGER DEFAULT 0,
+  allow_promotions BOOLEAN DEFAULT true,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. ATOMIC AUDITABLE TRANSACTION LEDGER
+CREATE TABLE IF NOT EXISTS easy_coins_ledger (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  customer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  transaction_type TEXT NOT NULL,
+  description TEXT,
+  reference_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. REWARD CLAIMS TABLE
+CREATE TABLE IF NOT EXISTS reward_claims (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  customer_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  reward_product_id TEXT REFERENCES reward_products(id) ON DELETE RESTRICT,
+  reward_name_snapshot TEXT NOT NULL,
+  brand_snapshot TEXT,
+  package_size_snapshot TEXT NOT NULL,
+  image_url_snapshot TEXT,
+  coin_cost_snapshot INTEGER NOT NULL CHECK (coin_cost_snapshot >= 0),
+  quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  claim_status TEXT NOT NULL DEFAULT 'reserved',
+  reserved_at TIMESTAMPTZ DEFAULT NOW(),
+  confirmed_at TIMESTAMPTZ,
+  notes TEXT,
+  cancellation_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for high-speed queries
+CREATE INDEX IF NOT EXISTS idx_reward_products_category ON reward_products(category_id);
+CREATE INDEX IF NOT EXISTS idx_reward_products_active ON reward_products(is_active);
+CREATE INDEX IF NOT EXISTS idx_reward_products_archived ON reward_products(is_archived);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_order ON reward_claims(order_id);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_customer ON reward_claims(customer_id);
+CREATE INDEX IF NOT EXISTS idx_reward_claims_status ON reward_claims(claim_status);
+CREATE INDEX IF NOT EXISTS idx_easy_coins_ledger_customer ON easy_coins_ledger(customer_id);
+CREATE INDEX IF NOT EXISTS idx_easy_coins_ledger_order ON easy_coins_ledger(order_id);
+
+-- Enable RLS
+ALTER TABLE reward_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE easy_coins_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE easy_coins_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_claims ENABLE ROW LEVEL SECURITY;
+
+-- Public read policies
+CREATE POLICY "Public can view active reward categories" ON reward_categories FOR SELECT USING (is_active = true);
+CREATE POLICY "Public can view active reward products" ON reward_products FOR SELECT USING (is_active = true AND is_archived = false);
+CREATE POLICY "Public can view program settings" ON easy_coins_settings FOR SELECT USING (true);
+CREATE POLICY "Customers can view their own ledger" ON easy_coins_ledger FOR SELECT USING (auth.uid() = customer_id);
+CREATE POLICY "Customers can view their own claims" ON reward_claims FOR SELECT USING (auth.uid() = customer_id);
+
+
+-- ====================================================================
+-- MIGRATION: 013_weekly_streak_system.sql
+-- ====================================================================
+
+
+
+
+-- ====================================================================
+-- MIGRATION: 014_legal_management_system.sql
+-- ====================================================================
+
+-- ====================================================================
+-- MIGRATION 014: COMPLETE LEGAL POLICY MANAGEMENT SYSTEM
+-- Terms & Conditions and Privacy Policy for Easy Farm (easyfarm.co.in)
+-- ====================================================================
+
+-- 1. LEGAL DOCUMENTS TABLE (Primary Document Registry)
+CREATE TABLE IF NOT EXISTS legal_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key TEXT UNIQUE NOT NULL, -- 'terms-and-conditions' | 'privacy-policy'
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  current_version TEXT NOT NULL DEFAULT '1.0',
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'archived')),
+  effective_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. LEGAL DOCUMENT VERSIONS TABLE (Immutable Version Snapshots)
+CREATE TABLE IF NOT EXISTS legal_document_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id UUID NOT NULL REFERENCES legal_documents(id) ON DELETE CASCADE,
+  version TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  summary_of_changes TEXT,
+  requires_reacceptance BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'archived')),
+  effective_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(document_id, version)
+);
+
+-- 3. LEGAL ACCEPTANCE RECORDS TABLE (Customer Explicit Acceptance Tracking)
+CREATE TABLE IF NOT EXISTS legal_acceptance_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  document_id UUID NOT NULL REFERENCES legal_documents(id) ON DELETE CASCADE,
+  document_key TEXT NOT NULL,
+  version TEXT NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  acceptance_source TEXT NOT NULL DEFAULT 'website' CHECK (acceptance_source IN ('website', 'mobile_app')),
+  event_type TEXT NOT NULL DEFAULT 'registration' CHECK (event_type IN ('registration', 'reacceptance', 'login_update')),
+  ip_address TEXT,
+  user_agent TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(customer_id, document_id, version)
+);
+
+-- 4. LEGAL AUDIT LOGS TABLE
+CREATE TABLE IF NOT EXISTS legal_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  admin_email TEXT,
+  document_id UUID REFERENCES legal_documents(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  previous_version TEXT,
+  new_version TEXT,
+  details JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. INDEXES FOR HIGH-PERFORMANCE QUERYING
+CREATE INDEX IF NOT EXISTS idx_legal_docs_key ON legal_documents(key);
+CREATE INDEX IF NOT EXISTS idx_legal_docs_status ON legal_documents(status);
+CREATE INDEX IF NOT EXISTS idx_legal_versions_doc_ver ON legal_document_versions(document_id, version);
+CREATE INDEX IF NOT EXISTS idx_legal_versions_status ON legal_document_versions(status);
+CREATE INDEX IF NOT EXISTS idx_legal_acceptance_cust ON legal_acceptance_records(customer_id);
+CREATE INDEX IF NOT EXISTS idx_legal_acceptance_doc_ver ON legal_acceptance_records(document_id, version);
+
+-- 6. ENABLE ROW LEVEL SECURITY
+ALTER TABLE legal_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_document_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_acceptance_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE legal_audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- 7. RLS POLICIES FOR LEGAL DOCUMENTS & VERSIONS
+-- Public can read published legal documents
+DROP POLICY IF EXISTS "Public can view published legal documents" ON legal_documents;
+CREATE POLICY "Public can view published legal documents"
+  ON legal_documents FOR SELECT
+  USING (status = 'published' OR is_admin());
+
+DROP POLICY IF EXISTS "Admins have full access to legal documents" ON legal_documents;
+CREATE POLICY "Admins have full access to legal documents"
+  ON legal_documents FOR ALL
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- Public can read published versions
+DROP POLICY IF EXISTS "Public can view published legal versions" ON legal_document_versions;
+CREATE POLICY "Public can view published legal versions"
+  ON legal_document_versions FOR SELECT
+  USING (status = 'published' OR is_admin());
+
+DROP POLICY IF EXISTS "Admins have full access to legal document versions" ON legal_document_versions;
+CREATE POLICY "Admins have full access to legal document versions"
+  ON legal_document_versions FOR ALL
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- Customers can view their own acceptance records
+DROP POLICY IF EXISTS "Customers can view their own acceptance records" ON legal_acceptance_records;
+CREATE POLICY "Customers can view their own acceptance records"
+  ON legal_acceptance_records FOR SELECT
+  USING (auth.uid() = customer_id OR is_admin());
+
+DROP POLICY IF EXISTS "Customers can insert their own acceptance records" ON legal_acceptance_records;
+CREATE POLICY "Customers can insert their own acceptance records"
+  ON legal_acceptance_records FOR INSERT
+  WITH CHECK (auth.uid() = customer_id OR is_admin());
+
+DROP POLICY IF EXISTS "Admins have full access to acceptance records" ON legal_acceptance_records;
+CREATE POLICY "Admins have full access to acceptance records"
+  ON legal_acceptance_records FOR ALL
+  USING (is_admin())
+  WITH CHECK (is_admin());
+
+-- Audit logs accessible to admins only
+DROP POLICY IF EXISTS "Admins can view legal audit logs" ON legal_audit_logs;
+CREATE POLICY "Admins can view legal audit logs"
+  ON legal_audit_logs FOR SELECT
+  USING (is_admin());
+
+DROP POLICY IF EXISTS "Admins can insert legal audit logs" ON legal_audit_logs;
+CREATE POLICY "Admins can insert legal audit logs"
+  ON legal_audit_logs FOR INSERT
+  WITH CHECK (is_admin());
+
+-- 8. INITIAL DOCUMENT SEEDING
+INSERT INTO legal_documents (id, key, title, slug, current_version, status, effective_date, published_at)
+VALUES 
+  ('11111111-1111-1111-1111-111111111111', 'terms-and-conditions', 'Terms & Conditions', 'terms-and-conditions', '1.0', 'published', NOW(), NOW()),
+  ('22222222-2222-2222-2222-222222222222', 'privacy-policy', 'Privacy Policy', 'privacy-policy', '1.0', 'published', NOW(), NOW())
+ON CONFLICT (key) DO UPDATE SET
+  title = EXCLUDED.title,
+  slug = EXCLUDED.slug,
+  status = 'published';
+
+-- 9. SEED LEGAL BUSINESS SETTINGS
+INSERT INTO business_settings (key, value, description)
+VALUES
+  ('legal_business_name', '"Easy Farm Fresh Produce"', 'Official legal registered entity name'),
+  ('legal_brand_name', '"Easy Farm"', 'Trading brand name'),
+  ('legal_support_email', '"business@easyfarm.co.in"', 'Official customer support email'),
+  ('legal_support_phone', '"+91 40 8899 7766"', 'Official customer support phone number'),
+  ('legal_whatsapp', '"+91 98490 12345"', 'Official WhatsApp support number'),
+  ('legal_registered_address', '"Easy Farm Distribution Hub, Ghatkesar & Pocharam, Hyderabad, Telangana – 500088"', 'Registered operations address'),
+  ('legal_grievance_officer_name', '"Grievance Redressal Officer"', 'Designated legal grievance officer'),
+  ('legal_grievance_officer_email', '"grievance@easyfarm.co.in"', 'Grievance officer contact email'),
+  ('legal_fssai_license', '""', 'FSSAI License registration number (Admin editable)'),
+  ('legal_gstin', '""', 'GSTIN identification number (Admin editable)')
+ON CONFLICT (key) DO NOTHING;
+
 -- ====================================================================
 -- PROVISION INITIAL ADMIN PROFILE
 -- Links shivashankarlode@gmail.com to profiles & admin_users

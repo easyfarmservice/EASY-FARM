@@ -93,9 +93,9 @@ export function DeliveryMapPicker({
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Reverse geocoded address label
-  const [resolvedAddress, setResolvedAddress] = useState<string>('Singapore Township, Pocharam, Ghatkesar');
-  const [detectedPlaceName, setDetectedPlaceName] = useState<string>('Singapore Township');
-  const [detectedMandal, setDetectedMandal] = useState<string>('Ghatkesar mandal');
+  const [resolvedAddress, setResolvedAddress] = useState<string>('Ghatkesar & Pocharam, Hyderabad (Active)');
+  const [detectedPlaceName, setDetectedPlaceName] = useState<string>('Ghatkesar & Pocharam, Hyderabad (Active)');
+  const [detectedMandal, setDetectedMandal] = useState<string>('Ghatkesar & Pocharam, Hyderabad (Active)');
   const [detectedPincode, setDetectedPincode] = useState<string>('500088');
 
   // Highlighted delivery zone polygon refs & state
@@ -391,14 +391,41 @@ export function DeliveryMapPicker({
         console.warn('Failed to load active delivery zones on map:', err);
       }
 
-      // Run initial authoritative verification
-      verifyServiceabilityBackend(coords.lat, coords.lng, {
-        shortName: resolvedAddress,
-        placeName: detectedPlaceName,
-        mandal: detectedMandal,
-        pincode: detectedPincode,
-        fullAddress: resolvedAddress,
-      });
+      // Automatically fetch device GPS location on map load and check if address is deliverable
+      if (typeof window !== 'undefined' && navigator.geolocation) {
+        setDetectingGps(true);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (!isMounted) return;
+            setDetectingGps(false);
+            const { latitude, longitude } = pos.coords;
+            updatePosition(latitude, longitude, true);
+          },
+          (err) => {
+            if (!isMounted) return;
+            setDetectingGps(false);
+            console.log('Map GPS auto-fetch not available or denied:', err.message);
+            // Fallback to verifying current pin coordinates if GPS is denied/unavailable
+            verifyServiceabilityBackend(coords.lat, coords.lng, {
+              shortName: resolvedAddress,
+              placeName: detectedPlaceName,
+              mandal: detectedMandal,
+              pincode: detectedPincode,
+              fullAddress: resolvedAddress,
+            });
+          },
+          { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
+        );
+      } else {
+        // Fallback when browser does not support geolocation
+        verifyServiceabilityBackend(coords.lat, coords.lng, {
+          shortName: resolvedAddress,
+          placeName: detectedPlaceName,
+          mandal: detectedMandal,
+          pincode: detectedPincode,
+          fullAddress: resolvedAddress,
+        });
+      }
 
       setTimeout(() => {
         if (mapInstanceRef.current) {
@@ -420,11 +447,19 @@ export function DeliveryMapPicker({
     };
     window.addEventListener('resize', handleResize);
 
+    const handleGlobalLocationChange = (e: any) => {
+      if (e.detail && typeof e.detail.lat === 'number' && typeof e.detail.lng === 'number' && isMounted) {
+        updatePosition(e.detail.lat, e.detail.lng, true, e.detail.community);
+      }
+    };
+    window.addEventListener('easyfarm-location-changed', handleGlobalLocationChange);
+
     init();
 
     return () => {
       isMounted = false;
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('easyfarm-location-changed', handleGlobalLocationChange);
       zoneLayersRef.current.forEach((layer) => {
         try {
           layer.remove();
@@ -656,10 +691,18 @@ export function DeliveryMapPicker({
           )}
         </div>
 
-        {/* Loading overlay while checking serviceability */}
-        {checkingServiceability && (
+        {/* Loading overlay while auto-fetching GPS or checking serviceability */}
+        {(detectingGps || checkingServiceability) && (
           <div className="absolute inset-0 bg-white/75 backdrop-blur-xs flex items-center justify-center z-[400]">
-            <EasyFarmLoader size="sm" text="Verifying delivery zone..." center={false} />
+            <EasyFarmLoader
+              size="sm"
+              text={
+                detectingGps
+                  ? 'Auto-fetching your current GPS location...'
+                  : 'Checking if your address is deliverable...'
+              }
+              center={false}
+            />
           </div>
         )}
       </div>
@@ -691,10 +734,10 @@ export function DeliveryMapPicker({
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span className="text-sm font-black text-slate-900 truncate">
-                  {validation.placeName || detectedPlaceName || 'Rajeev Gruha Kalpa'}
+                  {validation.placeName || detectedPlaceName || 'Ghatkesar & Pocharam, Hyderabad (Active)'}
                 </span>
                 <span className="text-xs font-semibold text-emerald-800 truncate">
-                  • {validation.locality || detectedMandal || 'Ghatkesar mandal'}
+                  • {validation.locality || detectedMandal || 'Ghatkesar & Pocharam, Hyderabad (Active)'}
                 </span>
               </div>
               <p className="text-xs text-slate-600 pl-6 leading-relaxed">
@@ -703,66 +746,122 @@ export function DeliveryMapPicker({
             </div>
 
             <p className="text-[11px] text-emerald-800 font-medium">
-              Delivery Zone: <strong>{validation.zoneName || 'Ghatkesar & Pocharam'}</strong> • {validation.deliveryPromise || 'Delivered by 6 PM Sunday'}
+              Delivery Zone: <strong>{validation.zoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)'}</strong> • {validation.deliveryPromise || 'Delivered by 6 PM Sunday'}
             </p>
           </div>
         </div>
       ) : (
-        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="w-9 h-9 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-              <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="space-y-2 flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-black uppercase text-amber-950 tracking-wider">
-                  Outside Sunday Delivery Zone
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-200 text-amber-950 text-xs font-black">
-                  PIN {validation.pincode || detectedPincode || '500088'}
-                </span>
+        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 space-y-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
               </div>
-
-              {/* Detected Place Details */}
-              <div className="bg-white/90 rounded-xl border border-amber-200 p-2.5 space-y-1">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span className="text-sm font-black text-slate-900 truncate">
-                    {validation.placeName || detectedPlaceName || 'Pinned Location'}
+              <div className="space-y-2 flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black uppercase text-amber-950 tracking-wider">
+                    Current Location Not Serviceable
                   </span>
-                  <span className="text-xs font-semibold text-amber-800 truncate">
-                    • {validation.locality || detectedMandal || 'Outside Zone'}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-200 text-amber-950 text-xs font-black">
+                    PIN {validation.pincode || detectedPincode || '500088'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 pl-6 leading-relaxed">
-                  {resolvedAddress}
+
+                {/* Detected Place Details */}
+                <div className="bg-white/90 rounded-xl border border-amber-200 p-2.5 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span className="text-sm font-black text-slate-900 truncate">
+                      {validation.placeName || detectedPlaceName || 'Pinned Location'}
+                    </span>
+                    <span className="text-xs font-semibold text-amber-800 truncate">
+                      • {validation.locality || detectedMandal || 'Outside Zone'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 pl-6 leading-relaxed">
+                    {resolvedAddress}
+                  </p>
+                </div>
+
+                <p className="text-xs text-slate-800 font-medium leading-relaxed">
+                  Your current location is outside our active delivery corridor. <strong>Drag or tap the pin onto the green serviceable area on the map</strong>, or select a nearby serviceable location below to enter your address and proceed to payment:
                 </p>
               </div>
+            </div>
 
-              <p className="text-xs text-slate-700 leading-relaxed">
-                Easy Farm currently delivers exclusively to active launch zones in <strong>Ghatkesar &amp; Pocharam</strong> (Rajeev Gruha Kalpa, Singapore Township, Emerald Heights, etc.).
-              </p>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  const serviceableHubs = [
+                    { name: 'Singapore Township', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4475, lng: 78.6534 },
+                    { name: 'Rajeev Gruha Kalpa', pincode: '501301', mandal: 'Ghatkesar mandal', lat: 17.4296638, lng: 78.6696088 },
+                    { name: 'Emerald Heights', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4520, lng: 78.6650 },
+                    { name: 'Modi Emerald Park', pincode: '501301', mandal: 'Ghatkesar mandal', lat: 17.4410, lng: 78.6750 },
+                    { name: 'Sanskruti Township', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4468, lng: 78.6540 },
+                  ];
+                  let nearest = serviceableHubs[0];
+                  let minDist = Infinity;
+                  for (const h of serviceableHubs) {
+                    const d = Math.hypot(h.lat - coords.lat, h.lng - coords.lng);
+                    if (d < minDist) {
+                      minDist = d;
+                      nearest = h;
+                    }
+                  }
+                  updatePosition(nearest.lat, nearest.lng, true, {
+                    placeName: nearest.name,
+                    mandal: nearest.mandal,
+                    pincode: nearest.pincode,
+                    label: `${nearest.name}, ${nearest.mandal}, ${nearest.pincode}`,
+                  });
+                }}
+                className="px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-extrabold transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Compass className="w-4 h-4" />
+                📍 Pin to Nearest Serviceable Location
+              </button>
+              <Link
+                href={`/waitlist?lat=${coords.lat}&lng=${coords.lng}&locality=${encodeURIComponent(
+                  resolvedAddress.split(',')[0]
+                )}`}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                Join Waitlist
+              </Link>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
-            <Link
-              href={`/waitlist?lat=${coords.lat}&lng=${coords.lng}&locality=${encodeURIComponent(
-                resolvedAddress.split(',')[0]
-              )}`}
-              className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-extrabold transition shadow-xs flex items-center justify-center gap-1.5"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              Join Waitlist for My Area
-            </Link>
-            <button
-              type="button"
-              onClick={() => updatePosition(17.4475, 78.6534, true, 'Singapore Township, Pocharam, Ghatkesar')}
-              className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1"
-            >
-              <Compass className="w-3.5 h-3.5" />
-              Singapore Township
-            </button>
+          {/* Nearby Serviceable Locations Quick-Pin Row */}
+          <div className="pt-2 border-t border-amber-200/80 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-extrabold text-amber-950 mr-1">
+              Pin Nearby Serviceable Area:
+            </span>
+            {[
+              { name: 'Singapore Township', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4475, lng: 78.6534 },
+              { name: 'Rajeev Gruha Kalpa', pincode: '501301', mandal: 'Ghatkesar mandal', lat: 17.4296638, lng: 78.6696088 },
+              { name: 'Emerald Heights', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4520, lng: 78.6650 },
+              { name: 'Modi Emerald Park', pincode: '501301', mandal: 'Ghatkesar mandal', lat: 17.4410, lng: 78.6750 },
+              { name: 'Sanskruti Township', pincode: '500088', mandal: 'Ghatkesar mandal', lat: 17.4468, lng: 78.6540 },
+            ].map((c) => (
+              <button
+                key={c.name}
+                type="button"
+                onClick={() =>
+                  updatePosition(c.lat, c.lng, true, {
+                    placeName: c.name,
+                    mandal: c.mandal,
+                    pincode: c.pincode,
+                    label: `${c.name}, ${c.mandal}, ${c.pincode}`,
+                  })
+                }
+                className="px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-300 text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+              >
+                <span>📍 {c.name}</span>
+                <span className="text-[10px] text-emerald-700">({c.pincode})</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Navigation, ChevronRight, X, Search, CheckCircle2, Map } from 'lucide-react';
+import { MapPin, Navigation, ChevronRight, ChevronDown, X, Search, CheckCircle2, Map } from 'lucide-react';
 import { SERVICEABLE_COMMUNITIES } from '@/lib/constants';
 import dynamic from 'next/dynamic';
 import type { LocationValidationResult } from '@/components/checkout/DeliveryMapPicker';
@@ -20,12 +20,103 @@ const DeliveryMapPicker = dynamic(
 );
 
 const STORAGE_KEY = 'easyfarm_selected_location';
+const LAST_FETCH_KEY = 'easyfarm_last_location_fetch';
 
 export interface SelectedLocation {
   community: string;
   area: string;
   pincode: string;
+  lat?: number;
+  lng?: number;
+  isServiceable?: boolean;
   setAt: number;
+}
+
+// ── Auto Fetch Device Location Helper ─────────────────────────────────────────
+export async function fetchDeviceLocation(): Promise<SelectedLocation | null> {
+  if (typeof window === 'undefined' || !navigator.geolocation) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+
+          // 1. Authoritative check
+          let isServiceable = false;
+          let zoneName = 'Ghatkesar & Pocharam, Hyderabad (Active)';
+          let areaName = 'Ghatkesar & Pocharam, Hyderabad (Active)';
+          let pincode = '500088';
+
+          try {
+            const checkRes = await fetch('/api/delivery/check', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ latitude, longitude }),
+            });
+            if (checkRes.ok) {
+              const checkData = await checkRes.json();
+              isServiceable = Boolean(checkData.available);
+              if (checkData.zone_name) zoneName = checkData.zone_name;
+              if (checkData.area_name) areaName = checkData.area_name;
+            }
+          } catch (e) {
+            console.warn('Check API fallback during auto-fetch:', e);
+          }
+
+          // 2. Reverse geocode for accurate apartment / society name
+          try {
+            const geoRes = await fetch('/api/delivery/reverse-geocode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ latitude, longitude }),
+            });
+            if (geoRes.ok) {
+              const geo = await geoRes.json();
+              if (geo.success) {
+                if (geo.placeName && geo.placeName !== 'Pinned Location') {
+                  areaName = geo.placeName;
+                }
+                if (geo.locality || geo.mandal) {
+                  zoneName = geo.locality || geo.mandal;
+                }
+                if (geo.pincode) {
+                  pincode = geo.pincode;
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Reverse geocode fallback during auto-fetch:', e);
+          }
+
+          const loc: SelectedLocation = {
+            community: areaName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+            area: zoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+            pincode,
+            lat: latitude,
+            lng: longitude,
+            isServiceable,
+            setAt: Date.now(),
+          };
+
+          saveLocation(loc);
+          localStorage.setItem(LAST_FETCH_KEY, String(Date.now()));
+          window.dispatchEvent(new CustomEvent('easyfarm-location-changed', { detail: loc }));
+          resolve(loc);
+        } catch (err) {
+          console.error('Failed to resolve device location:', err);
+          resolve(null);
+        }
+      },
+      (err) => {
+        console.log('Device location auto-fetch skipped/denied:', err.message);
+        resolve(null);
+      },
+      { timeout: 8000, enableHighAccuracy: true, maximumAge: 120000 }
+    );
+  });
 }
 
 // ── Hook — use anywhere to read selected location ────────────────────────────
@@ -37,6 +128,13 @@ export function useSelectedLocation() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setLocation(JSON.parse(stored));
     } catch {}
+
+    const handleLocationChange = (e: any) => {
+      if (e.detail) setLocation(e.detail);
+    };
+
+    window.addEventListener('easyfarm-location-changed', handleLocationChange);
+    return () => window.removeEventListener('easyfarm-location-changed', handleLocationChange);
   }, []);
 
   return location;
@@ -79,8 +177,8 @@ export function LocationPickerModal({ onClose, onSelect }: {
   const handleConfirmMapLocation = () => {
     if (!selectedMapLoc) return;
     const loc: SelectedLocation = {
-      community: selectedMapLoc.placeName || selectedMapLoc.communityName || selectedMapLoc.areaName || 'Rajeev Gruha Kalpa',
-      area: selectedMapLoc.locality || selectedMapLoc.zoneName || 'Ghatkesar mandal',
+      community: selectedMapLoc.placeName || selectedMapLoc.communityName || selectedMapLoc.areaName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+      area: selectedMapLoc.locality || selectedMapLoc.zoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
       pincode: selectedMapLoc.pincode || '501301',
       setAt: Date.now(),
     };
@@ -112,8 +210,8 @@ export function LocationPickerModal({ onClose, onSelect }: {
 
           if (data.available) {
             const loc: SelectedLocation = {
-              community: data.area_name || 'My Location (Ghatkesar)',
-              area: data.zone_name || 'Ghatkesar',
+              community: data.area_name || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+              area: data.zone_name || 'Ghatkesar & Pocharam, Hyderabad (Active)',
               pincode: '500088',
               setAt: Date.now(),
             };
@@ -156,7 +254,7 @@ export function LocationPickerModal({ onClose, onSelect }: {
             </div>
             <div>
               <h2 className="text-sm font-black text-slate-900">Choose delivery location</h2>
-              <p className="text-[11px] text-slate-400">Ghatkesar &amp; Pocharam Sunday Delivery</p>
+              <p className="text-[11px] text-emerald-800 font-bold">Ghatkesar &amp; Pocharam, Hyderabad (Active)</p>
             </div>
           </div>
           {onClose && (
@@ -219,7 +317,7 @@ export function LocationPickerModal({ onClose, onSelect }: {
                         Outside Current Launch Corridor
                       </p>
                       <p className="text-[11px] text-amber-700">
-                        Move the pin inside the green highlighted area (Ghatkesar &amp; Pocharam) or join the waitlist.
+                        Move the pin inside the green highlighted area (Ghatkesar &amp; Pocharam, Hyderabad (Active)) or join the waitlist.
                       </p>
                     </div>
                   )}
@@ -312,7 +410,7 @@ export function LocationPickerModal({ onClose, onSelect }: {
               {step === 'notfound' && (
                 <div className="space-y-3 py-2 text-center">
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    Your detected location is outside our Ghatkesar launch zone.
+                    Your detected location is outside our Ghatkesar &amp; Pocharam, Hyderabad (Active) launch zone.
                   </p>
                   <button
                     onClick={() => setStep('choose')}
@@ -346,34 +444,109 @@ export function LocationPickerModal({ onClose, onSelect }: {
 }
 
 // ── Location Picker Trigger (shown in Header) ─────────────────────────────────
-export function LocationPickerTrigger() {
+export function LocationPickerTrigger({
+  variant = 'default',
+  className = '',
+}: {
+  variant?: 'default' | 'bar';
+  className?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [location, setLocation] = useState<SelectedLocation | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setLocation(JSON.parse(stored));
     } catch {}
+
+    // Automatically fetch device location on mount if not fetched recently
+    const autoFetch = async () => {
+      try {
+        const lastFetch = localStorage.getItem(LAST_FETCH_KEY);
+        const now = Date.now();
+        // If not fetched in the last 45 minutes or no location stored yet:
+        if (!lastFetch || now - Number(lastFetch) > 2700000 || !localStorage.getItem(STORAGE_KEY)) {
+          setIsDetecting(true);
+          const detected = await fetchDeviceLocation();
+          if (detected) {
+            setLocation(detected);
+          }
+          setIsDetecting(false);
+        }
+      } catch {
+        setIsDetecting(false);
+      }
+    };
+
+    autoFetch();
+
+    const handleLocationChange = (e: any) => {
+      if (e.detail) setLocation(e.detail);
+    };
+
+    window.addEventListener('easyfarm-location-changed', handleLocationChange);
+    return () => window.removeEventListener('easyfarm-location-changed', handleLocationChange);
   }, []);
+
+  const displayLocationText = location
+    ? (location.community || location.area || 'Ghatkesar & Pocharam, Hyderabad (Active)')
+    : 'Ghatkesar & Pocharam, Hyderabad (Active)';
+
+  if (variant === 'bar') {
+    return (
+      <>
+        <button
+          onClick={() => setOpen(true)}
+          className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-200/90 text-left transition ${className}`}
+          aria-label="Change delivery location"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={`w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-2xs ${isDetecting ? 'animate-pulse' : ''}`}>
+              <MapPin className="w-3 h-3 text-white" />
+            </div>
+            <div className="flex items-center gap-1.5 min-w-0 text-xs">
+              <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider shrink-0">
+                {isDetecting ? 'Locating...' : 'Deliver to:'}
+              </span>
+              <span className="font-bold text-slate-900 truncate">
+                {displayLocationText}
+              </span>
+            </div>
+          </div>
+          <ChevronDown className="w-3.5 h-3.5 text-emerald-800 shrink-0 ml-1.5" />
+        </button>
+
+        {open && (
+          <LocationPickerModal
+            onClose={() => setOpen(false)}
+            onSelect={(loc) => { setLocation(loc); setOpen(false); }}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200/80 text-left transition shrink-0 group max-w-[130px] sm:max-w-[170px] lg:max-w-[200px]"
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50/90 hover:bg-emerald-100/90 border border-emerald-200/90 text-left transition shrink-0 group ${className}`}
         aria-label="Change delivery location"
       >
-        <div className="w-5 h-5 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-xs">
-          <MapPin className="w-3 h-3 text-white" />
+        <div className={`w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 shadow-2xs ${isDetecting ? 'animate-pulse' : ''}`}>
+          <MapPin className="w-3.5 h-3.5 text-white" />
         </div>
         <div className="flex flex-col min-w-0 pr-0.5">
-          <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider leading-none">Deliver to</span>
-          <span className="text-xs font-bold text-slate-800 truncate group-hover:text-emerald-900 leading-tight mt-0.5">
-            {location ? location.community : 'Singapore Township'}
+          <span className="text-[9px] font-black text-emerald-800 uppercase tracking-wider leading-none">
+            {isDetecting ? 'Locating...' : 'Deliver to'}
+          </span>
+          <span className="text-xs font-bold text-slate-800 truncate group-hover:text-emerald-900 leading-tight mt-0.5 max-w-[150px] lg:max-w-[200px] xl:max-w-[260px]">
+            {displayLocationText}
           </span>
         </div>
-        <ChevronRight className="w-3 h-3 text-slate-400 group-hover:text-slate-600 shrink-0 hidden sm:block" />
+        <ChevronDown className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-800 shrink-0" />
       </button>
 
       {open && (

@@ -13,13 +13,13 @@ export function Testimonials({ testimonials }: TestimonialsProps) {
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 space-y-3">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
             <MessageSquareQuote className="w-3.5 h-3.5 text-emerald-700" />
-            Early Ghatkesar Feedback
+            Early Ghatkesar &amp; Pocharam, Hyderabad (Active) Feedback
           </span>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight">
             What Hyderabad Residents Say
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Real families enjoying Saturday-plucked, Sunday-delivered fresh vegetables in Singapore Township, Pocharam &amp; Ghatkesar.
+            Real families enjoying Saturday-plucked, Sunday-delivered fresh vegetables in Ghatkesar &amp; Pocharam, Hyderabad (Active).
           </p>
         </div>
 

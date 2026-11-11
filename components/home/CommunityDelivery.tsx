@@ -42,7 +42,7 @@ export function CommunityDelivery({
           phone,
           email: `${phone}@community.easyfarm.in`,
           pincode: '500088',
-          locality: 'Ghatkesar',
+          locality: 'Ghatkesar & Pocharam, Hyderabad (Active)',
           apartment: `${communityName} (${flatCount} flats)`,
         }),
       });
@@ -112,7 +112,7 @@ export function CommunityDelivery({
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1">
                   <h3 className="text-lg font-extrabold text-slate-900">Request Community Setup</h3>
-                  <p className="text-xs text-slate-500">Coordinated deliveries for Ghatkesar gated communities.</p>
+                  <p className="text-xs text-slate-500">Coordinated deliveries for Ghatkesar &amp; Pocharam, Hyderabad (Active) gated communities.</p>
                 </div>
 
                 <div>

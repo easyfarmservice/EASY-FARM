@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Navigation, CheckCircle, AlertCircle, ArrowRight, Send, CheckCircle2, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { DeliveryCheckResult } from '@/types/database';
@@ -9,6 +9,27 @@ export function ServiceabilityCheck() {
   const [pincode, setPincode] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DeliveryCheckResult | null>(null);
+
+  // Auto-detect and populate from stored or auto-fetched device location
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('easyfarm_selected_location');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.pincode) {
+          setPincode(parsed.pincode);
+        }
+      }
+    } catch {}
+
+    const handleLocationChange = (e: any) => {
+      if (e.detail?.pincode) {
+        setPincode(e.detail.pincode);
+      }
+    };
+    window.addEventListener('easyfarm-location-changed', handleLocationChange);
+    return () => window.removeEventListener('easyfarm-location-changed', handleLocationChange);
+  }, []);
 
   // Waitlist state
   const [showWaitlistForm, setShowWaitlistForm] = useState(false);
@@ -206,7 +227,7 @@ export function ServiceabilityCheck() {
                     <div>
                       <h3 className="text-lg font-bold text-amber-200">We're not delivering here yet.</h3>
                       <p className="text-xs text-amber-100/70 mt-1 leading-relaxed">
-                        Easy Farm currently serves gated communities and homes in <strong>Ghatkesar &amp; Pocharam</strong> (Singapore Township, Sanskruti, Modi Emerald Heights &amp; surrounding areas).
+                        Easy Farm currently serves gated communities and homes in <strong>Ghatkesar &amp; Pocharam, Hyderabad (Active)</strong> (Singapore Township, Sanskruti, Modi Emerald Heights &amp; surrounding areas).
                       </p>
                     </div>
 

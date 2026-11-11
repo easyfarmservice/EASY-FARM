@@ -12,7 +12,7 @@ export default function AdminSettingsPage() {
 
   const [businessName, setBusinessName] = useState('Easy Farm');
   const [phone, setPhone] = useState('+91 98490 12345');
-  const [email, setEmail] = useState('support@easyfarm.in');
+  const [email, setEmail] = useState('easyfarmsupport@gmail.com');
   const [allowStacking, setAllowStacking] = useState(false);
   const [currency, setCurrency] = useState('INR (₹)');
 

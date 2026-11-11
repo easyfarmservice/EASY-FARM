@@ -24,6 +24,9 @@ import {
   Clock,
   AlertCircle,
   Coins,
+  Flame,
+  Scale,
+  FileText,
 } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -672,7 +675,7 @@ export default function AccountPage() {
                 </div>
 
                 <p className="text-[11px] text-emerald-800 font-semibold pt-0.5">
-                  {LAUNCH_ZONE} &amp; Pocharam Corridor
+                  {LAUNCH_ZONE}
                 </p>
               </div>
             </div>
@@ -719,7 +722,7 @@ export default function AccountPage() {
         </div>
 
         {/* ── 2. SEGMENTED TABS (Orders, Addresses, Settings) ───────────────── */}
-        <div className="bg-white border border-slate-200/80 p-1.5 rounded-2xl shadow-2xs flex gap-1.5 overflow-x-auto">
+        <div className="bg-white border border-slate-200/80 p-1.5 rounded-2xl shadow-2xs flex gap-1.5 overflow-x-auto scrollbar-none no-scrollbar">
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
@@ -745,6 +748,14 @@ export default function AccountPage() {
             <Coins className="w-4 h-4 text-amber-600" />
             <span>Easy Coins Rewards</span>
           </button>
+
+          <Link
+            href="/weekly-streak"
+            className="flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100/60 border border-emerald-200/60"
+          >
+            <Flame className="w-4 h-4 text-emerald-600 fill-emerald-200" />
+            <span>Weekly Streak</span>
+          </Link>
 
           <button
             type="button"
@@ -971,7 +982,7 @@ export default function AccountPage() {
                   Saved Delivery Addresses ({addresses.length})
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Your doorstep drop locations for Sunday deliveries in {LAUNCH_ZONE} &amp; Pocharam.
+                  Your doorstep drop locations for Sunday deliveries in {LAUNCH_ZONE}.
                 </p>
               </div>
 
@@ -1075,7 +1086,7 @@ export default function AccountPage() {
                 <div>
                   <p className="font-bold text-slate-800 text-sm">No delivery address saved yet</p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Add your flat number &amp; apartment building in Ghatkesar / Pocharam for smooth drops.
+                    Add your flat number &amp; apartment building in Ghatkesar &amp; Pocharam, Hyderabad (Active) for smooth drops.
                   </p>
                 </div>
                 <button
@@ -1130,7 +1141,7 @@ export default function AccountPage() {
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
                   <span className="text-slate-400 block font-medium">Delivery Corridor</span>
                   <span className="font-bold text-emerald-900 block text-sm">
-                    {LAUNCH_ZONE} &amp; Pocharam Corridor
+                    {LAUNCH_ZONE}
                   </span>
                 </div>
               </div>
@@ -1169,6 +1180,59 @@ export default function AccountPage() {
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
               </Link>
+            </div>
+
+            {/* Legal & Policies Section */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-emerald-800" />
+                  <h2 className="text-base font-black text-slate-900 uppercase tracking-wide">
+                    Legal &amp; Policy Center
+                  </h2>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  Active &amp; Binding
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Easy Farm operates under two transparent, unified policy documents. All customer order rights, cancellations, quality refunds, delivery arrangements, Easy Coins, and Weekly Streak rules are detailed within:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <Link
+                  href="/terms-and-conditions"
+                  target="_blank"
+                  className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 hover:border-emerald-600 hover:bg-emerald-50/40 transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-900">Terms &amp; Conditions</p>
+                      <p className="text-[10px] text-slate-500">Refunds, Delivery, Coins &amp; Streaks</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
+                </Link>
+
+                <Link
+                  href="/privacy-policy"
+                  target="_blank"
+                  className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 hover:border-emerald-600 hover:bg-emerald-50/40 transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-900">Privacy Policy</p>
+                      <p className="text-[10px] text-slate-500">Data, Razorpay, Supabase &amp; Rights</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition" />
+                </Link>
+              </div>
             </div>
 
             {/* Logout Action */}

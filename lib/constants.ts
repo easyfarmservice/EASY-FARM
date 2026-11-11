@@ -1,6 +1,6 @@
 export const APP_NAME = 'Easy Farm';
 export const APP_SLOGAN = 'Farm Fresh, Delivered Differently. Every Sunday to Your Door.';
-export const LAUNCH_ZONE = 'Ghatkesar';
+export const LAUNCH_ZONE = 'Ghatkesar & Pocharam, Hyderabad (Active)';
 export const LAUNCH_CITY = 'Hyderabad';
 export const CUTOFF_DAY = 'Saturday';
 export const CUTOFF_TIME = '23:00:00'; // Saturday 11:00 PM
@@ -19,14 +19,15 @@ export const SERVICEABLE_PINCODES = ['500088', '501301', '500098'];
 
 // Ghatkesar gated communities we serve with precise map coordinates
 export const SERVICEABLE_COMMUNITIES = [
-  { name: 'Rajeev Gruha Kalpa', pincode: '501301', area: 'Ghatkesar mandal', lat: 17.4296638, lng: 78.6696088 },
-  { name: 'Singapore Township', pincode: '500088', area: 'Pocharam / Ghatkesar', lat: 17.4475, lng: 78.6534 },
-  { name: 'Emerald Heights', pincode: '500088', area: 'Pocharam / Ghatkesar', lat: 17.4520, lng: 78.6650 },
-  { name: 'Sanskruti Township', pincode: '500088', area: 'Pocharam / Ghatkesar', lat: 17.4468, lng: 78.6540 },
-  { name: 'Pocharam IT Corridor', pincode: '500088', area: 'Ghatkesar', lat: 17.4540, lng: 78.6600 },
-  { name: 'Modi Emerald Park', pincode: '501301', area: 'Ghatkesar', lat: 17.4410, lng: 78.6750 },
-  { name: 'Ghatkesar Town Center', pincode: '501301', area: 'Ghatkesar', lat: 17.4436, lng: 78.6823 },
-  { name: 'Sri Aditya Homes', pincode: '501301', area: 'Ghatkesar', lat: 17.4380, lng: 78.6810 },
+  { name: 'Ghatkesar & Pocharam, Hyderabad (Active)', pincode: '500088', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4475, lng: 78.6534 },
+  { name: 'Rajeev Gruha Kalpa', pincode: '501301', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4296638, lng: 78.6696088 },
+  { name: 'Singapore Township', pincode: '500088', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4475, lng: 78.6534 },
+  { name: 'Emerald Heights', pincode: '500088', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4520, lng: 78.6650 },
+  { name: 'Sanskruti Township', pincode: '500088', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4468, lng: 78.6540 },
+  { name: 'Pocharam IT Corridor', pincode: '500088', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4540, lng: 78.6600 },
+  { name: 'Modi Emerald Park', pincode: '501301', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4410, lng: 78.6750 },
+  { name: 'Ghatkesar Town Center', pincode: '501301', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4436, lng: 78.6823 },
+  { name: 'Sri Aditya Homes', pincode: '501301', area: 'Ghatkesar & Pocharam, Hyderabad (Active)', lat: 17.4380, lng: 78.6810 },
 ];
 
 

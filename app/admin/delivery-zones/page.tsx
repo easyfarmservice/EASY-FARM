@@ -114,7 +114,7 @@ export default function AdminDeliveryZonesPage() {
     if (presetName === 'ghatkesar') {
       setFormData((prev) => ({
         ...prev,
-        name: 'Ghatkesar & Pocharam',
+        name: 'Ghatkesar & Pocharam, Hyderabad (Active)',
         slug: 'ghatkesar-pocharam',
       }));
       setDrawnPoints([
@@ -342,7 +342,7 @@ export default function AdminDeliveryZonesPage() {
                   onClick={() => handleApplyPreset('ghatkesar')}
                   className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-xs font-bold border border-slate-200 transition"
                 >
-                  📍 Ghatkesar & Pocharam Preset
+                  📍 Ghatkesar & Pocharam, Hyderabad (Active) Preset
                 </button>
                 <button
                   type="button"
@@ -361,7 +361,7 @@ export default function AdminDeliveryZonesPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Ghatkesar & Pocharam"
+                    placeholder="e.g. Ghatkesar & Pocharam, Hyderabad (Active)"
                     value={formData.name}
                     onChange={(e) => {
                       const val = e.target.value;

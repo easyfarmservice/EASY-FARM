@@ -5,8 +5,8 @@ import { ServiceabilityCheck } from '@/components/home/ServiceabilityCheck';
 import { LocationPageMap } from '@/components/location/LocationPageMap';
 
 export const metadata = {
-  title: 'Delivery Locations & Serviceability | Easy Farm Ghatkesar',
-  description: 'Check if Easy Farm delivers weekly vegetable baskets to your apartment or gated community in Ghatkesar & Pocharam, Hyderabad.',
+  title: 'Delivery Locations & Serviceability | Easy Farm',
+  description: 'Check if Easy Farm delivers weekly vegetable baskets to your apartment or gated community in Ghatkesar & Pocharam, Hyderabad (Active).',
 };
 
 export default function LocationPage() {
@@ -18,7 +18,7 @@ export default function LocationPage() {
           <div className="max-w-4xl mx-auto px-4 text-center space-y-2">
             <h1 className="text-3xl sm:text-5xl font-black">Check Service Availability</h1>
             <p className="text-emerald-200 text-sm sm:text-base">
-              Initial launch city: Hyderabad • Launch zone: Ghatkesar &amp; Pocharam
+              Active Delivery Corridor: <strong>Ghatkesar &amp; Pocharam, Hyderabad (Active)</strong>
             </p>
           </div>
         </div>
@@ -33,7 +33,7 @@ export default function LocationPage() {
         {/* GATED COMMUNITIES LIST */}
         <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
           <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-4 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-900">Active Service Communities in Ghatkesar &amp; Pocharam:</h2>
+            <h2 className="text-xl font-bold text-slate-900">Active Service Communities in Ghatkesar &amp; Pocharam, Hyderabad (Active):</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-700">
               <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 text-emerald-950 font-semibold border border-emerald-100">
                 ✓ Singapore Township (Sanskruti)

@@ -80,7 +80,7 @@ export default function TestPaymentPage() {
 
           <RazorpayButton
             amount={testAmount}
-            receipt={`test_rcpt_${Date.now()}`}
+            receipt={`test_rcpt_${testAmount}`}
             customerName="Easy Farm Tester"
             customerEmail="test@easyfarm.in"
             customerPhone="9876543210"

@@ -24,7 +24,7 @@ const DEFAULT_BENEFITS = [
   },
   {
     title: 'Reliable Sunday Delivery',
-    description: 'Uniform doorstep drops across Ghatkesar gated communities and standalone homes before 6 PM.',
+    description: 'Uniform doorstep drops across Ghatkesar & Pocharam, Hyderabad (Active) gated communities and standalone homes before 6 PM.',
   },
 ];
 

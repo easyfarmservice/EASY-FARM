@@ -59,19 +59,12 @@ const HARDCODED_COUPONS: Record<string, { code: string; type: 'flat' | 'percent'
     minOrder: 250,
     description: 'Flat ₹100 off on Premium Box or orders above ₹250',
   },
-  GACHIBOWLI100: {
-    code: 'GHATKESAR100',
-    type: 'flat',
-    value: 100,
-    minOrder: 250,
-    description: 'Flat ₹100 off on Premium Box or orders above ₹250',
-  },
   WELCOME20: {
     code: 'WELCOME20',
     type: 'percent',
     value: 20,
     minOrder: 150,
-    description: '20% welcome discount for Ghatkesar & Pocharam residents',
+    description: '20% welcome discount for Ghatkesar & Pocharam, Hyderabad (Active) residents',
   },
 };
 

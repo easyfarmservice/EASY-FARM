@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
       [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
         .filter(Boolean)
         .join(', ') ||
-      'Ghatkesar & Pocharam Corridor';
+      'Ghatkesar & Pocharam, Hyderabad (Active)';
 
     const displayOrderId =
       meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;

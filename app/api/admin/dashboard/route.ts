@@ -23,31 +23,65 @@ export async function GET(req: NextRequest) {
     const { data: dbOrders, count: ordersCount, error: ordersErr } = await supabase
       .from('orders')
       .select(
-        'id, total, status, created_at, profiles(full_name), customer_addresses(locality, apartment)',
+        'id, total, status, created_at, profiles(full_name), customer_addresses(locality, apartment), payments(status, amount)',
         { count: 'exact' }
       )
-      .order('created_at', { ascending: false })
-      .limit(50);
+      .order('created_at', { ascending: false });
 
     if (ordersErr) {
       console.error('Admin dashboard orders error:', ordersErr);
     }
 
     let revSum = 0;
+    let confirmedRevenue = 0;
+    let confirmedOrdersCount = 0;
+    let notConfirmedRevenue = 0;
+    let notConfirmedOrdersCount = 0;
+
+    const confirmedStatuses = new Set([
+      'confirmed',
+      'processing',
+      'packed',
+      'ready_for_delivery',
+      'out_for_delivery',
+      'delivered',
+    ]);
+
     let recentOrders: Array<any> = [];
 
     if (dbOrders && dbOrders.length > 0) {
-      revSum = dbOrders.reduce((acc, curr) => acc + Number(curr.total || 0), 0);
-      recentOrders = dbOrders.slice(0, 10).map((o: any) => ({
-        id: `ORD-${o.id.slice(0, 6).toUpperCase()}`,
-        customer: (o.profiles as any)?.full_name || 'Registered Customer',
-        location: o.customer_addresses
-          ? `${(o.customer_addresses as any).apartment || ''} ${(o.customer_addresses as any).locality}`.trim()
-          : 'Ghatkesar & Pocharam',
-        status: o.status ? o.status.replace('_', ' ') : 'Confirmed',
-        total: Number(o.total || 0),
-        date: new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-      }));
+      dbOrders.forEach((o: any) => {
+        const amt = Number(o.total || 0);
+        const payment = Array.isArray(o.payments) ? o.payments[0] : o.payments;
+        const isConfirmed = confirmedStatuses.has(o.status) || payment?.status === 'captured';
+
+        if (isConfirmed) {
+          confirmedRevenue += amt;
+          confirmedOrdersCount += 1;
+        } else {
+          notConfirmedRevenue += amt;
+          notConfirmedOrdersCount += 1;
+        }
+      });
+
+      revSum = confirmedRevenue + notConfirmedRevenue;
+
+      recentOrders = dbOrders.slice(0, 10).map((o: any) => {
+        const payment = Array.isArray(o.payments) ? o.payments[0] : o.payments;
+        const isConfirmed = confirmedStatuses.has(o.status) || payment?.status === 'captured';
+
+        return {
+          id: `ORD-${o.id.slice(0, 6).toUpperCase()}`,
+          customer: (o.profiles as any)?.full_name || 'Registered Customer',
+          location: o.customer_addresses
+            ? `${(o.customer_addresses as any).apartment || ''} ${(o.customer_addresses as any).locality}`.trim()
+            : 'Ghatkesar & Pocharam, Hyderabad (Active)',
+          status: o.status ? o.status.replace(/_/g, ' ') : 'confirmed',
+          isConfirmed,
+          total: Number(o.total || 0),
+          date: new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+        };
+      });
     }
 
     // 2. Customers
@@ -79,11 +113,15 @@ export async function GET(req: NextRequest) {
       .eq('active', true)
       .limit(1);
 
-    const activeZoneName = zoneData && zoneData.length > 0 ? zoneData[0].name : 'Ghatkesar & Pocharam';
+    const activeZoneName = zoneData && zoneData.length > 0 ? zoneData[0].name : 'Ghatkesar & Pocharam, Hyderabad (Active)';
 
     return NextResponse.json({
       totalOrders: ordersCount || dbOrders?.length || 0,
       totalRevenue: revSum,
+      confirmedRevenue,
+      confirmedOrdersCount,
+      notConfirmedRevenue,
+      notConfirmedOrdersCount,
       activeCustomers: customerCount || 0,
       waitlistCount: waitlistCount || 0,
       recentOrders,

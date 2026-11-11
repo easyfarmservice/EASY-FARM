@@ -51,11 +51,25 @@ export async function verifyAdminAuth(req: NextRequest): Promise<AuthCheckResult
       user = userData?.user || null;
     }
 
+    const customerRoleCookie = req.cookies.get('easyfarm_customer_role')?.value;
+    const adminVerifiedCookie = req.cookies.get('easyfarm_admin_verified')?.value === 'true';
+
     if (!user) {
-      // Allow requests from admin dashboard or development environment
+      // Block if explicitly marked as a customer session
+      if (customerRoleCookie === 'customer' && !adminVerifiedCookie) {
+        return {
+          authorized: false,
+          response: NextResponse.json(
+            { error: 'Forbidden: Administrator privileges required.' },
+            { status: 403 }
+          ),
+        };
+      }
+
+      // Allow verified admin browser sessions from the admin panel
       const referer = req.headers.get('referer') || '';
       const isInternalAdmin = referer.includes('/admin');
-      if (process.env.NODE_ENV !== 'production' || isInternalAdmin) {
+      if (adminVerifiedCookie || isInternalAdmin) {
         return {
           authorized: true,
           user: { id: 'admin-founder', email: 'easyfarmsupport@gmail.com' },
@@ -82,6 +96,10 @@ export async function verifyAdminAuth(req: NextRequest): Promise<AuthCheckResult
 
     const isRoleAdmin = profile?.role === 'admin';
     const isDomainAdmin = user.email?.endsWith('@easyfarm.in');
+    const isKnownAdmin =
+      user.email === 'shivashankarlode@gmail.com' ||
+      user.email === 'shivashankarlode8@gmail.com' ||
+      user.email === 'easyfarmsupport@gmail.com';
 
     let isAdminRecord = false;
     if (profile?.id) {
@@ -93,7 +111,7 @@ export async function verifyAdminAuth(req: NextRequest): Promise<AuthCheckResult
       if (adminRecord) isAdminRecord = true;
     }
 
-    if (!isRoleAdmin && !isDomainAdmin && !isAdminRecord) {
+    if (!isRoleAdmin && !isDomainAdmin && !isKnownAdmin && !isAdminRecord) {
       return {
         authorized: false,
         user,

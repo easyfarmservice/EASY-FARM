@@ -15,7 +15,9 @@ import Script from 'next/script';
 import type { LocationValidationResult } from '@/components/checkout/DeliveryMapPicker';
 import { EasyFarmLoader } from '@/components/ui/EasyFarmLoader';
 import { RewardClaimSelector } from '@/components/rewards/RewardClaimSelector';
-import type { RewardProduct } from '@/types/easy-coins';
+import type { RewardProduct, ClaimedRewardSelection } from '@/types/easy-coins';
+import { StreakRewardSelector } from '@/components/streak/StreakRewardSelector';
+import type { WeeklyStreakReward } from '@/types/weekly-streak';
 
 const DeliveryMapPicker = dynamic(
   () => import('@/components/checkout/DeliveryMapPicker').then((mod) => mod.DeliveryMapPicker),
@@ -23,7 +25,7 @@ const DeliveryMapPicker = dynamic(
     ssr: false,
     loading: () => (
       <div className="h-[280px] w-full rounded-2xl bg-slate-50 border border-slate-200 flex flex-col items-center justify-center">
-        <EasyFarmLoader size="sm" text="Loading Ghatkesar delivery map..." />
+        <EasyFarmLoader size="sm" text="Loading Ghatkesar & Pocharam, Hyderabad (Active) delivery map..." />
       </div>
     ),
   }
@@ -59,14 +61,29 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Easy Coins Reward State
-  const [selectedReward, setSelectedReward] = useState<RewardProduct | null>(null);
+  // Easy Coins Reward State (supports claiming any number of items up to balance + basket purchase discount @ 10 Coins = ₹1)
+  const [selectedRewards, setSelectedRewards] = useState<ClaimedRewardSelection[]>([]);
   const [customerCoinBalance, setCustomerCoinBalance] = useState<number>(150);
+  const [appliedDiscountCoins, setAppliedDiscountCoins] = useState<number>(0);
+
+  const handleUpdateDiscountCoins = (coins: number) => {
+    const clean = Math.max(0, Math.floor(Number(coins) || 0));
+    setAppliedDiscountCoins(clean);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('easyfarm_applied_discount_coins', String(clean));
+      } catch { }
+    }
+  };
+
+  // Weekly Streak Milestone Reward State
+  const [availableStreakRewards, setAvailableStreakRewards] = useState<WeeklyStreakReward[]>([]);
+  const [selectedStreakReward, setSelectedStreakReward] = useState<WeeklyStreakReward | null>(null);
 
   // Address management states
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ id?: string; email?: string } | null>(null);
 
   // Map and Location validation states
@@ -85,7 +102,7 @@ export default function CheckoutPage() {
     email: '',
     apartment: 'Singapore Township',
     flatNo: '',
-    locality: 'Ghatkesar',
+    locality: 'Ghatkesar & Pocharam, Hyderabad (Active)',
     pincode: '500088',
   });
 
@@ -94,14 +111,14 @@ export default function CheckoutPage() {
     setPinnedCoords({ lat: result.lat, lng: result.lng });
     setFormAddress((prev) => ({
       ...prev,
-      locality: result.locality || 'Ghatkesar mandal',
+      locality: result.locality || 'Ghatkesar & Pocharam, Hyderabad (Active)',
       pincode: result.pincode || '501301',
-      apartment: result.placeName || result.communityName || prev.apartment || 'Rajeev Gruha Kalpa',
+      apartment: result.placeName || result.communityName || prev.apartment || 'Ghatkesar & Pocharam, Hyderabad (Active)',
     }));
     if (result.isServiceable) {
       setError((prev) => (prev && (prev.includes('corridor') || prev.includes('Outside') || prev.includes('Pinned')) ? null : prev));
     } else {
-      setError('Pinned location is outside our active Ghatkesar Sunday delivery corridor. Please move the pin to Rajeev Gruha Kalpa, Singapore Township, or nearby Ghatkesar communities.');
+      setError('Pinned location is outside our active Ghatkesar & Pocharam, Hyderabad (Active) Sunday delivery corridor. Please move the pin to Ghatkesar & Pocharam, Hyderabad (Active).');
     }
   }, []);
 
@@ -129,6 +146,7 @@ export default function CheckoutPage() {
             quantity: i.quantity,
             customPrice: i.basket.price,
             compareAtPrice: i.basket.compare_at_price,
+            customizedItems: i.customizedItems,
           })),
           couponCode: coupon ?? appliedCouponCode ?? undefined,
           customerEmail: currentUser?.email,
@@ -141,13 +159,47 @@ export default function CheckoutPage() {
     } finally {
       setPricingLoading(false);
     }
-  }, [items, appliedCouponCode, currentUser?.email]);
+  }, [items, appliedCouponCode, currentUser]);
 
   // Recalculate on mount and when cart changes
   useEffect(() => {
     recalculateTotal();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
+
+  // Check for ?coupon= in URL query parameter on mount and auto-apply
+  useEffect(() => {
+    if (typeof window === 'undefined' || items.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlCoupon = params.get('coupon');
+    if (urlCoupon && !appliedCouponCode) {
+      const clean = urlCoupon.trim().toUpperCase();
+      setCouponCode(clean);
+      (async () => {
+        try {
+          const res = await fetch('/api/coupons/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: clean,
+              subtotal,
+              customerEmail: currentUser?.email && currentUser.email.includes('@') ? currentUser.email : undefined,
+            }),
+          });
+          const data = await res.json();
+          if (data.valid) {
+            setAppliedCouponCode(data.code);
+            setCouponCode(data.code);
+            setCouponError(null);
+            await recalculateTotal(data.code);
+          } else {
+            setCouponError(data.message || 'Invalid coupon code');
+          }
+        } catch { }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,6 +245,71 @@ export default function CheckoutPage() {
   const displayTotal = serverTotal?.totalPayable ?? Math.max(0, subtotal - displayCouponDiscount);
   const isFreeDelivery = serverTotal?.isFreeDelivery ?? false;
 
+  const streakDiscountAmount = selectedStreakReward
+    ? selectedStreakReward.discount_type === 'percentage'
+      ? Math.min(
+        Math.round(displaySubtotal * (Number(selectedStreakReward.discount_value) / 100)),
+        Number(selectedStreakReward.max_discount_cap || 99999)
+      )
+      : Math.min(displaySubtotal, Number(selectedStreakReward.discount_value))
+    : 0;
+
+  const rewardItemsCoinsUsed = selectedRewards.reduce(
+    (sum, r) => sum + (Number(r.product.coin_cost) || 0) * (Number(r.quantity) || 1),
+    0
+  );
+  const payableAfterCouponAndStreak = Math.max(1, displayTotal - streakDiscountAmount);
+  const maxCoinsForBasketDiscount = Math.min(
+    Math.max(0, customerCoinBalance - rewardItemsCoinsUsed),
+    Math.max(0, Math.floor(Math.max(0, payableAfterCouponAndStreak - 1) * 10))
+  );
+  const effectiveDiscountCoins = Math.min(appliedDiscountCoins, maxCoinsForBasketDiscount);
+  const coinsDiscountAmount = Number((effectiveDiscountCoins / 10).toFixed(2));
+  const finalPayableAmount = Math.max(
+    1,
+    Number((payableAfterCouponAndStreak - coinsDiscountAmount).toFixed(2))
+  );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedDisc = localStorage.getItem('easyfarm_applied_discount_coins');
+        if (savedDisc) {
+          setAppliedDiscountCoins(Math.max(0, Math.floor(Number(savedDisc) || 0)));
+        }
+      } catch { }
+
+      // Immediately purge any disabled Easy Coins reward items from localStorage / state
+      (async () => {
+        try {
+          const rRes = await fetch('/api/easy-coins/rewards', { cache: 'no-store' });
+          const rData = await rRes.json();
+          const activeProds = Array.isArray(rData?.products) ? rData.products : [];
+          const activeIds = new Set(activeProds.map((p: any) => p.id));
+
+          if (activeProds.length === 0) {
+            localStorage.removeItem('easyfarm_claimed_rewards');
+            setSelectedRewards([]);
+          } else {
+            const savedClaims = localStorage.getItem('easyfarm_claimed_rewards');
+            if (savedClaims) {
+              const parsed = JSON.parse(savedClaims);
+              if (Array.isArray(parsed)) {
+                const validClaims = parsed.filter((it: any) => it?.product?.id && activeIds.has(it.product.id));
+                if (validClaims.length === 0) {
+                  localStorage.removeItem('easyfarm_claimed_rewards');
+                  setSelectedRewards([]);
+                } else {
+                  localStorage.setItem('easyfarm_claimed_rewards', JSON.stringify(validClaims));
+                }
+              }
+            }
+          }
+        } catch { }
+      })();
+    }
+  }, []);
+
   useEffect(() => {
     async function loadUserAndAddresses() {
       try {
@@ -232,7 +349,7 @@ export default function CheckoutPage() {
               initialPhone = demoUser.phone || '';
               initialEmail = demoUser.email || '';
               userIdent = { email: demoUser.email };
-            } catch {}
+            } catch { }
           }
         }
 
@@ -285,60 +402,69 @@ export default function CheckoutPage() {
           }
         }
 
-        if (combined.length > 0) {
-          // Normalize coordinates & contact info for saved addresses
-          const normalized = combined.map((addr) => {
-            let lat = addr.latitude;
-            let lng = addr.longitude;
-            if (!lat || !lng) {
-              // Default to Singapore Township, Ghatkesar launch center
-              lat = 17.4475;
-              lng = 78.6534;
-            }
-            return {
-              ...addr,
-              fullName: addr.fullName || initialName || 'Resident',
-              phone: addr.phone || initialPhone || '',
-              latitude: lat,
-              longitude: lng,
-            };
-          });
+        // Always open the interactive map & auto-fetch current GPS location on checkout
+        // while pre-filling recipient contact details (name, phone, email, flatNo) if available
+        let autoLocality = 'Ghatkesar & Pocharam, Hyderabad (Active)';
+        let autoApartment = 'Singapore Township';
+        let autoPincode = '500088';
+        let autoLat = 17.4475;
+        let autoLng = 78.6534;
+        let prefillFlatNo = '';
 
+        if (combined.length > 0) {
+          const normalized = combined.map((addr) => ({
+            ...addr,
+            fullName: addr.fullName || initialName || 'Resident',
+            phone: addr.phone || initialPhone || '',
+            email: addr.email || initialEmail || '',
+            latitude: addr.latitude || 17.4475,
+            longitude: addr.longitude || 78.6534,
+          }));
           setSavedAddresses(normalized);
           const defaultAddr = normalized.find((a) => a.isDefault) || normalized[0];
-          setSelectedAddressId(defaultAddr.id);
-          const targetLat = defaultAddr.latitude || 17.4475;
-          const targetLng = defaultAddr.longitude || 78.6534;
-          setPinnedCoords({ lat: targetLat, lng: targetLng });
-          setShowAddForm(false);
-
-          // Authoritatively verify serviceability for the initial saved address
-          try {
-            const checkRes = await fetch('/api/delivery/check', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ latitude: targetLat, longitude: targetLng }),
-            });
-            const checkData = await checkRes.json();
-            setIsLocationServiceable(Boolean(checkData.available));
-          } catch {
-            setIsLocationServiceable(true);
-          }
-        } else {
-          // If no saved addresses exist yet, open form with user's initial name/email/phone
-          setFormAddress((prev) => ({
-            ...prev,
-            fullName: initialName,
-            phone: initialPhone,
-            email: initialEmail,
-          }));
-          setShowAddForm(true);
+          initialName = initialName || defaultAddr.fullName || '';
+          initialPhone = initialPhone || defaultAddr.phone || '';
+          initialEmail = initialEmail || defaultAddr.email || '';
+          prefillFlatNo = defaultAddr.flatNo || '';
         }
+
+        try {
+          const stored = localStorage.getItem('easyfarm_selected_location');
+          if (stored) {
+            const loc = JSON.parse(stored);
+            if (loc.community) autoApartment = loc.community;
+            if (loc.area) autoLocality = loc.area;
+            if (loc.pincode) autoPincode = loc.pincode;
+            if (loc.lat && loc.lng) {
+              autoLat = loc.lat;
+              autoLng = loc.lng;
+              setPinnedCoords({ lat: autoLat, lng: autoLng });
+            }
+          }
+        } catch { }
+
+        setFormAddress((prev) => ({
+          ...prev,
+          fullName: initialName || prev.fullName,
+          phone: initialPhone || prev.phone,
+          email: initialEmail || prev.email,
+          flatNo: prefillFlatNo || prev.flatNo,
+          apartment: autoApartment,
+          locality: autoLocality,
+          pincode: autoPincode,
+        }));
+        setSelectedAddressId(null);
+        setShowAddForm(true);
 
         // Fetch customer Easy Coins balance
         try {
-          const coinUrl = profileId ? `/api/easy-coins/balance?customerId=${profileId}` : '/api/easy-coins/balance';
-          const cRes = await fetch(coinUrl);
+          const cachedProfileId =
+            profileId ||
+            (typeof window !== 'undefined' ? localStorage.getItem('easyfarm_customer_profile_id') : null);
+          const coinUrl = cachedProfileId
+            ? `/api/easy-coins/balance?customerId=${encodeURIComponent(cachedProfileId)}`
+            : '/api/easy-coins/balance';
+          const cRes = await fetch(coinUrl, { cache: 'no-store' });
           const cData = await cRes.json();
           if (cData.success && typeof cData.available_balance === 'number') {
             setCustomerCoinBalance(cData.available_balance);
@@ -346,12 +472,44 @@ export default function CheckoutPage() {
         } catch (cErr) {
           console.warn('Coin balance fetch notice:', cErr);
         }
+
+        // Fetch customer Weekly Streak milestone rewards
+        try {
+          const streakUrl = profileId
+            ? `/api/weekly-streak/rewards?customerId=${profileId}&status=active`
+            : '/api/weekly-streak/rewards?status=active';
+          const sRes = await fetch(streakUrl);
+          const sData = await sRes.json();
+          if (sData.success && Array.isArray(sData.rewards)) {
+            setAvailableStreakRewards(sData.rewards);
+          }
+        } catch (sErr) {
+          console.warn('Streak rewards fetch notice:', sErr);
+        }
       } catch (err) {
         console.error('Error initializing checkout address data:', err);
       }
     }
 
     loadUserAndAddresses();
+
+    const handleGlobalLocationChange = (e: any) => {
+      if (e.detail) {
+        const { community, area, pincode, lat, lng } = e.detail;
+        setFormAddress((prev) => ({
+          ...prev,
+          apartment: community || prev.apartment,
+          locality: area || prev.locality,
+          pincode: pincode || prev.pincode,
+        }));
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          setPinnedCoords({ lat, lng });
+        }
+      }
+    };
+
+    window.addEventListener('easyfarm-location-changed', handleGlobalLocationChange);
+    return () => window.removeEventListener('easyfarm-location-changed', handleGlobalLocationChange);
   }, []);
 
   const activeAddress = savedAddresses.find((a) => a.id === selectedAddressId) || formAddress;
@@ -372,7 +530,7 @@ export default function CheckoutPage() {
       setIsLocationServiceable(Boolean(checkData.available));
       if (!checkData.available) {
         setError(
-          `Selected address (${addr.apartment || addr.locality}) is outside our active Ghatkesar Sunday delivery zone. Please update the pinned location on the map.`
+          `Selected address (${addr.apartment || addr.locality}) is outside our active Ghatkesar & Pocharam, Hyderabad (Active) Sunday delivery zone. Please update the pinned location on the map.`
         );
       } else {
         setError(null);
@@ -390,7 +548,7 @@ export default function CheckoutPage() {
     }
 
     if (!isLocationServiceable) {
-      setError('Selected address is outside our Ghatkesar delivery zone. Please choose a location within Singapore Township, Emerald Heights, or nearby Ghatkesar communities.');
+      setError('Selected address is outside our Ghatkesar & Pocharam, Hyderabad (Active) delivery zone. Please choose a location within Ghatkesar & Pocharam, Hyderabad (Active).');
       return;
     }
 
@@ -477,25 +635,51 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: items.map((i) => ({
-            basketId: i.basket.id,
-            quantity: i.quantity,
-            customPrice: i.basket.price,
-            compareAtPrice: i.basket.compare_at_price,
-            customizedItems: i.customizedItems,
-          })),
+          items: items.map((i) => {
+            const b = i.basket || ({} as any);
+            const fallbackSubItems =
+              i.customizedItems && i.customizedItems.length > 0
+                ? i.customizedItems
+                : Array.isArray((b as any).items) && (b as any).items.length > 0
+                  ? (b as any).items.map((it: any) => ({
+                    productId: it.product_id || it.product?.id,
+                    productName: it.product?.name || it.product_name || 'Vegetable',
+                    quantity: it.quantity || 1,
+                    unit: it.unit || it.product?.unit || 'kg',
+                    price: it.item_price || it.product?.price || 35,
+                  }))
+                  : undefined;
+
+            return {
+              basketId: b.id,
+              basketName: b.name,
+              quantity: i.quantity,
+              customPrice: b.price,
+              compareAtPrice: b.compare_at_price,
+              customizedItems: fallbackSubItems,
+            };
+          }),
           address: {
             ...activeAddress,
             fullName: activeAddress.fullName || 'Resident',
             phone: cleanPhone,
             pincode: cleanPincode,
-            email: activeAddress.email && activeAddress.email.includes('@') ? activeAddress.email : undefined,
+            email:
+              (activeAddress.email && activeAddress.email.includes('@') ? activeAddress.email : undefined) ||
+              (formAddress.email && formAddress.email.includes('@') ? formAddress.email : undefined) ||
+              (currentUser?.email && currentUser.email.includes('@') ? currentUser.email : undefined),
             locality: activeAddress.locality || 'Singapore Township & Pocharam Corridor',
             latitude: orderLat,
             longitude: orderLng,
           },
           couponCode: appliedCouponCode || undefined,
-          claimedRewardId: selectedReward ? selectedReward.id : undefined,
+          claimedRewards: selectedRewards.map((r) => ({
+            rewardProductId: r.product.id,
+            quantity: r.quantity,
+          })),
+          claimedRewardId: selectedRewards[0]?.product.id || undefined,
+          redeemedDiscountCoins: effectiveDiscountCoins > 0 ? effectiveDiscountCoins : undefined,
+          streakRewardId: selectedStreakReward ? selectedStreakReward.id : undefined,
         }),
       });
 
@@ -512,6 +696,16 @@ export default function CheckoutPage() {
 
       const confirmedOrderId = data.orderId;
       const paymentOrder = data.paymentOrder;
+
+      if (typeof window !== 'undefined') {
+        if (data.customerProfileId) {
+          localStorage.setItem('easyfarm_customer_profile_id', data.customerProfileId);
+        }
+        if (typeof data.newCoinBalance === 'number') {
+          setCustomerCoinBalance(data.newCoinBalance);
+        }
+        window.dispatchEvent(new Event('easycoins-updated'));
+      }
 
       // Helper to dynamically load Razorpay checkout script if not yet loaded
       const loadRazorpayScript = (): Promise<boolean> => {
@@ -584,11 +778,28 @@ export default function CheckoutPage() {
                   paymentId: paymentResp.razorpay_payment_id,
                   paymentStatus: 'paid',
                   status: 'confirmed',
-                  claimedReward: selectedReward || data.claimedReward || null,
+                  claimedReward: selectedRewards[0]?.product || data.claimedReward || null,
+                  claimedRewards:
+                    selectedRewards.map((r) => ({
+                      ...r.product,
+                      quantity: r.quantity,
+                      total_coins: r.product.coin_cost * r.quantity,
+                    })) ||
+                    data.claimedRewards ||
+                    [],
+                  coinsDiscount:
+                    effectiveDiscountCoins > 0
+                      ? {
+                        coinsUsed: effectiveDiscountCoins,
+                        discountAmount: coinsDiscountAmount,
+                      }
+                      : null,
                   createdAt: new Date().toISOString(),
                 };
 
                 localStorage.setItem(`easyfarm_order_${confirmedOrderId}`, JSON.stringify(orderData));
+                localStorage.removeItem('easyfarm_claimed_rewards');
+                localStorage.removeItem('easyfarm_applied_discount_coins');
 
                 try {
                   const existingIdsStr = localStorage.getItem('easyfarm_order_ids');
@@ -597,7 +808,7 @@ export default function CheckoutPage() {
                     existingIds.unshift(confirmedOrderId);
                     localStorage.setItem('easyfarm_order_ids', JSON.stringify(existingIds));
                   }
-                } catch {}
+                } catch { }
               }
 
               clearCart();
@@ -691,101 +902,19 @@ export default function CheckoutPage() {
                     <MapPin className="w-5 h-5 text-emerald-700" />
                     Delivery Destination
                   </h2>
-                  {savedAddresses.length > 0 && !showAddForm && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddForm(true)}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl transition"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add New Address
-                    </button>
-                  )}
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live GPS & Delivery Check
+                  </span>
                 </div>
 
-                {/* SAVED ADDRESSES SELECTOR */}
-                {savedAddresses.length > 0 && !showAddForm && (
-                  <div className="space-y-3">
-                    <label className="block text-xs font-bold text-slate-700">Select Saved Address for Sunday Delivery:</label>
-                    <div className="space-y-2.5">
-                      {savedAddresses.map((addr) => {
-                        const isSelected = selectedAddressId === addr.id;
-                        return (
-                          <div
-                            key={addr.id}
-                            onClick={() => handleSelectSavedAddress(addr)}
-                            className={`p-4 rounded-2xl border-2 cursor-pointer transition flex items-start justify-between gap-3 ${
-                              isSelected
-                                ? 'border-emerald-700 bg-emerald-50/60 shadow-sm'
-                                : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
-                            }`}
-                          >
-                            <div className="space-y-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-black uppercase px-2 py-0.5 rounded bg-emerald-900 text-white">
-                                  {addr.label}
-                                </span>
-                                <span className="font-bold text-slate-900 text-sm">{addr.fullName}</span>
-                                <span className="text-xs text-slate-500">({addr.phone})</span>
-                              </div>
-                              <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                                {addr.flatNo}, {addr.apartment}, {addr.locality} — {addr.pincode}
-                              </p>
-                            </div>
-                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-1 ${
-                              isSelected ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 bg-white'
-                            }`}>
-                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Selected Address Serviceability Status Badge */}
-                    <div className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isLocationServiceable ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                        <div>
-                          <p className="text-xs font-bold text-emerald-950">
-                            {isLocationServiceable
-                              ? 'Verified Ghatkesar Delivery Corridor'
-                              : '⚠️ Selected Address Outside Service Corridor'}
-                          </p>
-                          <p className="text-[11px] text-emerald-700">
-                            {isLocationServiceable
-                              ? 'Sunday weekly doorstep delivery confirmed'
-                              : 'Please re-pin your address in Singapore Township or Ghatkesar'}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddForm(true)}
-                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300 shadow-xs transition"
-                      >
-                        📍 Re-pin on Map
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* ADD NEW ADDRESS FORM */}
-                {(showAddForm || savedAddresses.length === 0) && (
+                {/* INTERACTIVE MAP & LIVE LOCATION FORM (ALWAYS OPEN) */}
+                {(showAddForm || true) && (
                   <form onSubmit={handleSaveNewAddress} className="space-y-4 pt-2">
                     <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200">
                       <span className="text-xs font-bold text-slate-800">
-                        {savedAddresses.length === 0 ? '1. Pin Delivery Location on Map' : 'Add Another Delivery Address'}
+                        1. Pin Your Current Location on Map & Verify Delivery Availability
                       </span>
-                      {savedAddresses.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setShowAddForm(false)}
-                          className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
-                        >
-                          Cancel
-                        </button>
-                      )}
                     </div>
 
                     {/* BIGBASKET / ZEPTO INTERACTIVE MAP PICKER */}
@@ -801,11 +930,10 @@ export default function CheckoutPage() {
                             key={lbl}
                             type="button"
                             onClick={() => setFormAddress({ ...formAddress, label: lbl })}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition border ${
-                              formAddress.label === lbl
-                                ? 'bg-emerald-800 text-white border-emerald-800 shadow-sm'
-                                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                            }`}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition border ${formAddress.label === lbl
+                              ? 'bg-emerald-800 text-white border-emerald-800 shadow-sm'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                              }`}
                           >
                             {lbl}
                           </button>
@@ -884,7 +1012,7 @@ export default function CheckoutPage() {
                         <input
                           type="text"
                           disabled
-                          value={formAddress.locality || 'Ghatkesar'}
+                          value={formAddress.locality || 'Ghatkesar & Pocharam, Hyderabad (Active)'}
                           className="w-full px-4 py-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 font-bold text-sm min-h-[44px]"
                         />
                       </div>
@@ -899,17 +1027,6 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
-                    <button
-                      type="submit"
-                      disabled={!isLocationServiceable}
-                      className={`w-full py-3.5 rounded-xl font-bold text-sm transition shadow-md flex items-center justify-center gap-2 ${
-                        isLocationServiceable
-                          ? 'bg-emerald-800 hover:bg-emerald-900 text-white cursor-pointer'
-                          : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                      }`}
-                    >
-                      {isLocationServiceable ? 'Save Address & Select' : '⚠️ Location Outside Service Zone — Move Pin to Ghatkesar'}
-                    </button>
                   </form>
                 )}
 
@@ -918,11 +1035,11 @@ export default function CheckoutPage() {
                   onClick={() => {
                     if (!isLocationServiceable) {
                       setShowAddForm(true);
-                      setError('Your delivery location needs to be confirmed on the map within the Ghatkesar Sunday delivery corridor.');
+                      setError('Your delivery location needs to be confirmed on the map within the Ghatkesar & Pocharam, Hyderabad (Active) Sunday delivery corridor.');
                       return;
                     }
 
-                    const target = savedAddresses.find((a) => a.id === selectedAddressId) || formAddress;
+                    const target = formAddress;
                     const rawPhone = (target.phone || '').replace(/\D/g, '');
                     const cleanPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : rawPhone;
 
@@ -950,35 +1067,30 @@ export default function CheckoutPage() {
                       return;
                     }
 
-                    // Auto-save address if user filled form without clicking "Save Address & Select"
-                    if (showAddForm || savedAddresses.length === 0 || !savedAddresses.some((a) => a.id === selectedAddressId)) {
-                      const newId = `addr_${Date.now()}`;
-                      const newAddrObj: SavedAddress = {
-                        ...formAddress,
-                        id: newId,
-                        fullName: target.fullName.trim(),
-                        phone: cleanPhone,
-                        apartment: target.apartment.trim(),
-                        flatNo: target.flatNo.trim(),
-                        latitude: pinnedCoords.lat,
-                        longitude: pinnedCoords.lng,
-                        isDefault: savedAddresses.length === 0,
-                      };
-                      const updated = [...savedAddresses, newAddrObj];
-                      setSavedAddresses(updated);
-                      setSelectedAddressId(newId);
-                      saveUserAddresses(currentUser, updated);
-                      setShowAddForm(false);
-                    }
+                    const newId = `addr_${Date.now()}`;
+                    const newAddrObj: SavedAddress = {
+                      ...formAddress,
+                      id: newId,
+                      fullName: target.fullName.trim(),
+                      phone: cleanPhone,
+                      apartment: target.apartment.trim(),
+                      flatNo: target.flatNo.trim(),
+                      latitude: pinnedCoords.lat,
+                      longitude: pinnedCoords.lng,
+                      isDefault: savedAddresses.length === 0,
+                    };
+                    const updated = [...savedAddresses, newAddrObj];
+                    setSavedAddresses(updated);
+                    setSelectedAddressId(newId);
+                    saveUserAddresses(currentUser, updated);
 
                     setError(null);
                     setStep(2);
                   }}
-                  className={`w-full py-4 rounded-xl font-bold text-base transition shadow-md min-h-[48px] mt-4 flex items-center justify-center gap-2 cursor-pointer ${
-                    isLocationServiceable
-                      ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-900/20'
-                      : 'bg-amber-600 hover:bg-amber-700 text-white'
-                  }`}
+                  className={`w-full py-4 rounded-xl font-bold text-base transition shadow-md min-h-[48px] mt-4 flex items-center justify-center gap-2 cursor-pointer ${isLocationServiceable
+                    ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-900/20'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white'
+                    }`}
                 >
                   {isLocationServiceable ? (
                     'Continue to Payment →'
@@ -993,8 +1105,27 @@ export default function CheckoutPage() {
                 <RewardClaimSelector
                   orderSubtotal={serverTotal?.subtotal ?? subtotal}
                   customerBalance={customerCoinBalance}
-                  selectedReward={selectedReward}
-                  onSelectReward={(rew) => setSelectedReward(rew)}
+                  selectedRewards={selectedRewards}
+                  onUpdateRewards={(rews) => setSelectedRewards(rews)}
+                  appliedDiscountCoins={effectiveDiscountCoins}
+                  onUpdateDiscountCoins={handleUpdateDiscountCoins}
+                  disabled={loading}
+                />
+
+                {/* WEEKLY STREAK REWARD SELECTOR */}
+                <StreakRewardSelector
+                  availableRewards={availableStreakRewards}
+                  selectedReward={selectedStreakReward}
+                  onSelectReward={(rew) => {
+                    setSelectedStreakReward(rew);
+                    if (rew) {
+                      // Disallow coupon stacking if reward applied
+                      setAppliedCouponCode(null);
+                      setCouponCode('');
+                    }
+                  }}
+                  orderSubtotal={displaySubtotal}
+                  hasCouponApplied={!!appliedCouponCode}
                   disabled={loading}
                 />
 
@@ -1004,59 +1135,56 @@ export default function CheckoutPage() {
                     Select Payment Method
                   </h2>
 
-                <div className="space-y-3">
-                  <div className="p-4 border-2 border-emerald-600 bg-emerald-50/50 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">Razorpay Secure Checkout</h4>
-                      <p className="text-xs text-slate-500">UPI (GPay, PhonePe, Paytm), Credit/Debit Cards, NetBanking</p>
+                  <div className="space-y-3">
+                    <div className="p-4 border-2 border-emerald-600 bg-emerald-50/50 rounded-2xl flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">Razorpay Secure Checkout</h4>
+                        <p className="text-xs text-slate-500">UPI (GPay, PhonePe, Paytm), Credit/Debit Cards, NetBanking</p>
+                      </div>
+                      <ShieldCheck className="w-6 h-6 text-emerald-700" />
                     </div>
-                    <ShieldCheck className="w-6 h-6 text-emerald-700" />
                   </div>
-                </div>
 
-                <div className="bg-slate-50 p-4 rounded-2xl text-xs text-slate-600 space-y-1.5 border border-slate-200">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 text-xs">Delivering to:</span>
-                    <span className="text-[10px] font-bold uppercase bg-emerald-800 text-white px-2 py-0.5 rounded">
-                      {activeAddress.label}
-                    </span>
+                  <div className="bg-slate-50 p-4 rounded-2xl text-xs text-slate-600 space-y-1.5 border border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 text-xs">Delivering to:</span>
+                      <span className="text-[10px] font-bold uppercase bg-emerald-800 text-white px-2 py-0.5 rounded">
+                        {activeAddress.label}
+                      </span>
+                    </div>
+                    <p className="font-bold text-slate-900 text-sm">{activeAddress.fullName} ({activeAddress.phone})</p>
+                    <p>{activeAddress.flatNo}, {activeAddress.apartment}, {activeAddress.locality || 'Ghatkesar & Pocharam, Hyderabad (Active)'}, PIN {activeAddress.pincode || '500088'}</p>
                   </div>
-                  <p className="font-bold text-slate-900 text-sm">{activeAddress.fullName} ({activeAddress.phone})</p>
-                  <p>{activeAddress.flatNo}, {activeAddress.apartment}, {activeAddress.locality || 'Ghatkesar'}, PIN {activeAddress.pincode || '500088'}</p>
-                </div>
 
-                {serverTotal && !serverTotal.valid && (
-                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-bold space-y-1">
-                    <p className="flex items-center gap-1.5">
-                      <span>⚠️</span>
-                      <span>{serverTotal.message || 'Cannot place order. Please check your cart.'}</span>
-                    </p>
-                    <p className="text-[11px] font-normal text-amber-700">
-                      💡 Tip: Use coupon code <strong className="font-mono font-bold text-amber-900">TEST1</strong> to pay ₹1 for testing!
-                    </p>
+                  {serverTotal && !serverTotal.valid && (
+                    <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 text-xs font-bold space-y-1">
+                      <p className="flex items-center gap-1.5">
+                        <span>⚠️</span>
+                        <span>{serverTotal.message || 'Cannot place order. Please check your cart.'}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="w-1/3 py-3.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-50 transition min-h-[48px]"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePlaceOrder}
+                      disabled={loading || pricingLoading || (serverTotal ? !serverTotal.valid : false)}
+                      className="w-2/3 py-3.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-black text-base transition shadow-lg min-h-[48px] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {loading ? 'Processing...' : pricingLoading ? 'Calculating...' : `Pay ₹${finalPayableAmount.toFixed(2)} & Place Order`}
+                    </button>
                   </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="w-1/3 py-3.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-50 transition min-h-[48px]"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handlePlaceOrder}
-                    disabled={loading || pricingLoading || (serverTotal ? !serverTotal.valid : false)}
-                    className="w-2/3 py-3.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-black text-base transition shadow-lg min-h-[48px] disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {loading ? 'Processing...' : pricingLoading ? 'Calculating...' : `Pay ₹${displayTotal.toFixed(2)} & Place Order`}
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
           </div>
 
           {/* RIGHT SUMMARY */}
@@ -1087,7 +1215,7 @@ export default function CheckoutPage() {
                     {customizedItems && customizedItems.length > 0 && (
                       <div className="mt-1 pl-2 border-l-2 border-emerald-400 bg-emerald-50/40 p-1.5 rounded-r-lg text-[11px] space-y-1">
                         <span className="font-bold text-emerald-950 block text-[10px] uppercase tracking-wider">
-                          Selected 5 Items:
+                          Selected {customizedItems.length} {customizedItems.length === 1 ? 'Item' : 'Items'}:
                         </span>
                         <div className="grid grid-cols-1 gap-0.5">
                           {customizedItems.map((ci: any, cidx: number) => (
@@ -1149,6 +1277,95 @@ export default function CheckoutPage() {
                 )}
               </div>
 
+              {/* EASY COINS BASKET PURCHASE DISCOUNT SELECTOR (10 COINS = ₹1) */}
+              <div className="border-t border-slate-100 pt-3">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-50 to-emerald-50/70 border border-amber-300 space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-black text-amber-950 flex items-center gap-1">
+                          <span>🪙</span>
+                          <span>Easy Coins Basket Discount</span>
+                        </span>
+                        <span className="text-[10px] font-black uppercase bg-amber-400 text-emerald-950 px-2 py-0.5 rounded-full">
+                          10 Coins = ₹1
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        Available:{' '}
+                        <strong className="text-amber-900">
+                          {Math.max(0, customerCoinBalance - rewardItemsCoinsUsed)} Coins
+                        </strong>{' '}
+                        (Save up to ₹{(maxCoinsForBasketDiscount / 10).toFixed(2)})
+                      </p>
+                    </div>
+
+                    {effectiveDiscountCoins > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateDiscountCoins(0)}
+                        className="px-2.5 py-1.5 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 font-bold text-[11px] transition shrink-0 cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={maxCoinsForBasketDiscount <= 0}
+                        onClick={() => handleUpdateDiscountCoins(maxCoinsForBasketDiscount)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-[11px] transition disabled:opacity-40 shrink-0 cursor-pointer shadow-xs"
+                      >
+                        Apply Coins (-₹{(maxCoinsForBasketDiscount / 10).toFixed(2)})
+                      </button>
+                    )}
+                  </div>
+
+                  {maxCoinsForBasketDiscount > 0 && (
+                    <div className="space-y-2 pt-1.5 border-t border-amber-200/70">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateDiscountCoins(Math.max(0, effectiveDiscountCoins - 10))
+                          }
+                          className="px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-black text-[11px] hover:bg-amber-100 cursor-pointer"
+                        >
+                          -10
+                        </button>
+                        <input
+                          type="range"
+                          min={0}
+                          max={maxCoinsForBasketDiscount}
+                          step={1}
+                          value={effectiveDiscountCoins}
+                          onChange={(e) => handleUpdateDiscountCoins(Number(e.target.value))}
+                          className="flex-1 accent-emerald-800 cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateDiscountCoins(
+                              Math.min(maxCoinsForBasketDiscount, effectiveDiscountCoins + 10)
+                            )
+                          }
+                          className="px-2 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-black text-[11px] hover:bg-amber-100 cursor-pointer"
+                        >
+                          +10
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-slate-700">
+                          Applying <strong>{effectiveDiscountCoins}</strong> Easy Coins
+                        </span>
+                        <span className="font-black text-emerald-800">
+                          - ₹{coinsDiscountAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
                 {pricingLoading ? (
                   <div className="flex items-center justify-center py-3">
@@ -1168,6 +1385,18 @@ export default function CheckoutPage() {
                       </div>
                     )}
 
+                    {coinsDiscountAmount > 0 && (
+                      <div className="flex justify-between text-amber-900 font-bold bg-amber-50 p-2 rounded-xl border border-amber-200">
+                        <span className="flex items-center gap-1.5">
+                          <span>🪙</span>
+                          <span>Easy Coins Discount ({effectiveDiscountCoins} Coins)</span>
+                        </span>
+                        <span className="text-emerald-800 font-black">
+                          - ₹{coinsDiscountAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between text-slate-600">
                       <span>Delivery Fee</span>
                       <span className={`font-bold ${isFreeDelivery ? 'text-emerald-700' : 'text-slate-900'}`}>
@@ -1181,25 +1410,66 @@ export default function CheckoutPage() {
                       </p>
                     )}
 
-                    {/* CLAIMED PHYSICAL REWARD ROW */}
-                    {selectedReward && (
-                      <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300 rounded-2xl flex items-center justify-between text-xs my-1">
-                        <div className="flex items-center gap-2 min-w-0 pr-2">
-                          <span className="text-base shrink-0">🎁</span>
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-900 truncate leading-tight">{selectedReward.name}</p>
-                            <p className="text-[10px] text-amber-900 font-semibold">{selectedReward.coin_cost} Easy Coins • Delivered Free</p>
-                          </div>
+                    {/* CLAIMED PHYSICAL REWARDS ROWS */}
+                    {selectedRewards.length > 0 && (
+                      <div className="p-3 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300 rounded-2xl space-y-2 text-xs my-1">
+                        <div className="flex items-center justify-between border-b border-amber-200/80 pb-1.5">
+                          <span className="font-black text-amber-950 text-[11px] uppercase tracking-wider flex items-center gap-1">
+                            <span>🎁</span>
+                            <span>
+                              Extra Items Claimed ({selectedRewards.reduce((s, r) => s + r.quantity, 0)})
+                            </span>
+                          </span>
+                          <span className="font-bold text-amber-900 text-[11px]">
+                            🪙{' '}
+                            {selectedRewards.reduce(
+                              (s, r) => s + r.product.coin_cost * r.quantity,
+                              0
+                            )}{' '}
+                            Coins
+                          </span>
                         </div>
-                        <span className="font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded text-[11px] border border-emerald-300 shrink-0">
-                          ₹0.00
+                        <div className="space-y-1.5">
+                          {selectedRewards.map(({ product: rew, quantity: rQty }) => (
+                            <div
+                              key={rew.id}
+                              className="flex items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="min-w-0 pr-2">
+                                <p className="font-bold text-slate-900 truncate leading-tight">
+                                  {rew.name} {rQty > 1 ? `× ${rQty}` : ''}
+                                </p>
+                                <p className="text-[10px] text-amber-900 font-semibold">
+                                  {rew.package_size} • {rew.coin_cost * rQty} Easy Coins
+                                </p>
+                              </div>
+                              <span className="font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded text-[11px] border border-emerald-300 shrink-0">
+                                ₹0.00
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* WEEKLY STREAK DISCOUNT ROW */}
+                    {selectedStreakReward && (
+                      <div className="flex justify-between text-emerald-800 font-bold bg-emerald-50/80 p-2 rounded-xl border border-emerald-200">
+                        <span className="flex items-center gap-1.5">
+                          <span>🔥</span>
+                          <span>{selectedStreakReward.milestone_title}</span>
+                        </span>
+                        <span>
+                          - ₹{streakDiscountAmount.toFixed(2)}
                         </span>
                       </div>
                     )}
 
                     <div className="border-t border-slate-100 pt-2 flex justify-between text-base font-black text-slate-900">
                       <span>Total Payable</span>
-                      <span className="text-emerald-800">₹{displayTotal.toFixed(2)}</span>
+                      <span className="text-emerald-800">
+                        ₹{finalPayableAmount.toFixed(2)}
+                      </span>
                     </div>
 
                     {/* EASY COINS EARNED ON ORDER */}

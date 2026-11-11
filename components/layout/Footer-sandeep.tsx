@@ -14,7 +14,7 @@ const DEFAULTS = {
     'Boduppal & Medipally',
     'Peerzadiguda & Narapally',
   ],
-  supportEmail: 'support@easyfarm.in',
+  supportEmail: 'easyfarmsupport@gmail.com',
   supportPhone: '+91 40 8899 7766',
   whatsappNumber: '+91 98490 12345',
   copyrightText: `© ${new Date().getFullYear()} Easy Farm . All rights reserved.`,

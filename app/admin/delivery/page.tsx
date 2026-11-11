@@ -51,14 +51,38 @@ interface DeliveryOrder {
   failure_reason?: string;
   rescheduled_date?: string;
   basket_summary: string;
+  items?: Array<{
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    customizedItems?: Array<{
+      productName: string;
+      quantity: number;
+      unit: string;
+      price?: number;
+    }>;
+  }>;
   claimed_reward?: {
     id: string;
     name: string;
     brand?: string;
     package_size?: string;
+    quantity?: number;
     coin_cost: number;
+    total_coins?: number;
     image_url?: string;
   } | null;
+  claimed_rewards?: Array<{
+    id: string;
+    name: string;
+    brand?: string;
+    package_size?: string;
+    quantity: number;
+    coin_cost: number;
+    total_coins: number;
+    image_url?: string;
+  }>;
 }
 
 interface DeliveryStats {
@@ -240,6 +264,9 @@ export default function DeliveryOperationsPage() {
         type: 'success',
         message: `✓ Order #${order.id} delivery verified and confirmed successfully!`,
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('weekly-streak-updated'));
+      }
       setInlineOtps((prev) => ({ ...prev, [order.id]: '' }));
       fetchDeliveries(true);
     } catch (err: any) {
@@ -283,6 +310,9 @@ export default function DeliveryOperationsPage() {
       });
 
       setVerifySuccess({ time: deliveredTime });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('weekly-streak-updated'));
+      }
       fetchDeliveries(true);
     } catch (err: any) {
       setVerifyError('Network error verifying OTP: ' + err.message);
@@ -481,7 +511,7 @@ export default function DeliveryOperationsPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Dispatch orders, trigger secure 4-digit OTPs via MSG91, and verify customer doorstep handovers in Ghatkesar &amp; Pocharam.
+              Dispatch orders, trigger secure 4-digit OTPs via MSG91, and verify customer doorstep handovers in Ghatkesar &amp; Pocharam, Hyderabad (Active).
             </p>
           </div>
 
@@ -1382,8 +1412,8 @@ export default function DeliveryOperationsPage() {
 
                 {/* Customer Information */}
                 <div className="space-y-3">
-                  <h3 className="font-black text-slate-900 uppercase tracking-wider text-xs">Customer Information</h3>
-                  <div className="p-4 rounded-2xl border border-slate-200 space-y-2">
+                  <h3 className="font-black text-slate-900 uppercase tracking-wider text-xs">Customer &amp; Delivery Information</h3>
+                  <div className="p-4 rounded-2xl border border-slate-200 space-y-2.5">
                     <div className="flex justify-between">
                       <span className="text-slate-500">Full Name:</span>
                       <span className="font-bold text-slate-900">{selectedOrder.customer_name}</span>
@@ -1403,13 +1433,140 @@ export default function DeliveryOperationsPage() {
                         )}
                       </div>
                     </div>
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-slate-500 shrink-0">Email ID:</span>
+                      <span className="font-bold text-slate-900 break-all text-right">
+                        {selectedOrder.customer_email || 'Not Provided'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Date to be Delivered:</span>
+                      <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        {selectedOrder.delivery_date
+                          ? new Date(selectedOrder.delivery_date).toLocaleDateString('en-IN', {
+                              weekday: 'short',
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          : 'Upcoming Sunday'}
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Locality:</span>
                       <span className="font-bold text-slate-900">{selectedOrder.area}</span>
                     </div>
                     <div className="pt-1 border-t border-slate-100">
-                      <span className="text-slate-500 block mb-0.5">Delivery Address:</span>
+                      <span className="text-slate-500 block mb-0.5">Location to be Delivered:</span>
                       <p className="font-medium text-slate-800 leading-relaxed">{selectedOrder.full_address}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Ordered, Quantity & Price */}
+                <div className="space-y-3">
+                  <h3 className="font-black text-slate-900 uppercase tracking-wider text-xs">
+                    Items Ordered, Quantity &amp; Price
+                  </h3>
+                  <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/40">
+                    {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                      selectedOrder.items.map((item, idx) => (
+                        <div key={idx} className="space-y-2 pb-2 border-b border-slate-200/70 last:border-none last:pb-0">
+                          <div className="flex items-center justify-between font-bold text-slate-900">
+                            <span>
+                              {item.name} × {item.quantity}
+                            </span>
+                            <span className="text-emerald-900 font-black">₹{Number(item.totalPrice).toFixed(2)}</span>
+                          </div>
+                          {item.customizedItems && item.customizedItems.length > 0 && (
+                            <div className="pl-2 space-y-1">
+                              {item.customizedItems.map((sub, sIdx) => {
+                                const unitStr = (sub.unit || '').trim();
+                                const rawQty = Number(sub.quantity) || 1;
+                                const rawPrice = Number(sub.price) || 0;
+                                const isPrefixedUnit = /^\d/.test(unitStr);
+                                const qtyDisplay = isPrefixedUnit
+                                  ? rawQty > 1
+                                    ? `${rawQty} × ${unitStr}`
+                                    : unitStr
+                                  : `${rawQty} ${unitStr}`.trim();
+                                const itemTotal = isPrefixedUnit ? rawPrice * rawQty : rawPrice;
+                                return (
+                                  <div
+                                    key={sIdx}
+                                    className="flex items-center justify-between text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80"
+                                  >
+                                    <span className="font-semibold text-slate-800">
+                                      • {sub.productName}{' '}
+                                      <span className="text-emerald-800 font-bold">({qtyDisplay})</span>
+                                    </span>
+                                    <span className="font-bold text-slate-900">₹{itemTotal.toFixed(2)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="font-bold text-slate-800">{selectedOrder.basket_summary}</p>
+                    )}
+
+                    {/* Extra Items Claimed Using Easy Coins */}
+                    {(() => {
+                      const rewardsList =
+                        Array.isArray(selectedOrder.claimed_rewards) &&
+                        selectedOrder.claimed_rewards.length > 0
+                          ? selectedOrder.claimed_rewards
+                          : selectedOrder.claimed_reward
+                          ? [
+                              {
+                                ...selectedOrder.claimed_reward,
+                                quantity: selectedOrder.claimed_reward.quantity || 1,
+                                total_coins:
+                                  selectedOrder.claimed_reward.total_coins ||
+                                  selectedOrder.claimed_reward.coin_cost,
+                              },
+                            ]
+                          : [];
+
+                      if (rewardsList.length === 0) return null;
+
+                      return (
+                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-black text-amber-950 uppercase tracking-wider">
+                              🎁 Extra Items Claimed (Easy Coins)
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                              Pack in Basket
+                            </span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {rewardsList.map((rew, rIdx) => (
+                              <div
+                                key={rew.id || rIdx}
+                                className="flex items-center justify-between text-xs bg-white px-2.5 py-1.5 rounded-lg border border-amber-200"
+                              >
+                                <span className="font-bold text-slate-900">
+                                  {rew.name}{' '}
+                                  <span className="text-amber-800">
+                                    ({rew.package_size || '1 Unit'}) × {rew.quantity || 1}
+                                  </span>
+                                </span>
+                                <span className="font-bold text-amber-900 text-[11px]">
+                                  🪙 {rew.total_coins || rew.coin_cost * (rew.quantity || 1)} Coins • ₹0
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-black text-slate-900 text-sm">
+                      <span>Total Order Amount:</span>
+                      <span className="text-emerald-900">₹{selectedOrder.amount.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

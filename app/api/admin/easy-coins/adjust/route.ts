@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EasyCoinsService } from '@/services/easy-coins.service';
+import { verifyAdminAuth } from '@/lib/security/auth-guard';
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.authorized || auth.response) {
+    return auth.response || NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
     const { customerId, amount, reason, adminEmail } = body;

@@ -3,11 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminLayout } from '@/components/admin/AdminLayout';
-import { ShoppingBag, Users, MapPin, AlertTriangle, DollarSign, RefreshCw, Database, Mail, CheckCircle2, XCircle } from 'lucide-react';
+import { ShoppingBag, Users, MapPin, RefreshCw, Database, Mail, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 interface DashboardStats {
   totalOrders: number;
   totalRevenue: number;
+  confirmedRevenue: number;
+  confirmedOrdersCount: number;
+  notConfirmedRevenue: number;
+  notConfirmedOrdersCount: number;
   activeCustomers: number;
   waitlistCount: number;
   recentOrders: Array<{
@@ -15,6 +19,7 @@ interface DashboardStats {
     customer: string;
     location: string;
     status: string;
+    isConfirmed: boolean;
     total: number;
     date: string;
   }>;
@@ -36,11 +41,15 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     totalOrders: 0,
     totalRevenue: 0,
+    confirmedRevenue: 0,
+    confirmedOrdersCount: 0,
+    notConfirmedRevenue: 0,
+    notConfirmedOrdersCount: 0,
     activeCustomers: 0,
     waitlistCount: 0,
     recentOrders: [],
     lowStockItems: [],
-    activeZoneName: 'Ghatkesar',
+    activeZoneName: 'Ghatkesar & Pocharam, Hyderabad (Active)',
   });
 
   const checkResendStatus = async () => {
@@ -61,7 +70,6 @@ export default function AdminDashboardPage() {
     setError(null);
     try {
       // Fetch from server-side API route (uses service role key, bypasses RLS)
-      // This is independent of customer session state
       const res = await fetch('/api/admin/dashboard');
       if (!res.ok) {
         throw new Error(`Dashboard API error: ${res.status}`);
@@ -70,11 +78,15 @@ export default function AdminDashboardPage() {
       setStats({
         totalOrders: data.totalOrders || 0,
         totalRevenue: data.totalRevenue || 0,
+        confirmedRevenue: data.confirmedRevenue || 0,
+        confirmedOrdersCount: data.confirmedOrdersCount || 0,
+        notConfirmedRevenue: data.notConfirmedRevenue || 0,
+        notConfirmedOrdersCount: data.notConfirmedOrdersCount || 0,
         activeCustomers: data.activeCustomers || 0,
         waitlistCount: data.waitlistCount || 0,
         recentOrders: data.recentOrders || [],
         lowStockItems: data.lowStockItems || [],
-        activeZoneName: data.activeZoneName || 'Ghatkesar & Pocharam',
+        activeZoneName: data.activeZoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
       });
     } catch (err: any) {
       console.error('Error fetching admin dashboard data:', err);
@@ -88,13 +100,6 @@ export default function AdminDashboardPage() {
     fetchDashboardData();
     checkResendStatus();
   }, []);
-
-  const kpis = [
-    { label: "Total Orders", value: `${stats.totalOrders}`, change: 'Confirmed customer orders', icon: ShoppingBag, color: 'text-emerald-700 bg-emerald-100' },
-    { label: 'Total Revenue', value: `₹${stats.totalRevenue.toLocaleString('en-IN')}`, change: 'Gross harvest revenue', icon: DollarSign, color: 'text-emerald-800 bg-emerald-100' },
-    { label: 'Registered Customers', value: `${stats.activeCustomers}`, change: 'Active household accounts', icon: Users, color: 'text-blue-700 bg-blue-100' },
-    { label: 'Waitlist Demand', value: `${stats.waitlistCount}`, change: 'Expansion area requests', icon: MapPin, color: 'text-amber-700 bg-amber-100' },
-  ];
 
   return (
     <AdminLayout>
@@ -165,23 +170,85 @@ export default function AdminDashboardPage() {
           </Link>
         </div>
 
-        {/* KPI CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {kpis.map((kpi, idx) => {
-            const Icon = kpi.icon;
-            return (
-              <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase">{kpi.label}</span>
-                  <div className={`p-2 rounded-xl ${kpi.color}`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-2xl font-black text-slate-900">{loading ? '...' : kpi.value}</div>
-                <p className="text-[11px] font-medium text-slate-400">{kpi.change}</p>
+        {/* KPI CARDS: CONFIRMED VS NOT CONFIRMED REVENUE + METRICS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* 1. CONFIRMED AMOUNT (PROMINENT EMERALD) */}
+          <div className="bg-white border-2 border-emerald-500/70 rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-8 -mt-8 pointer-events-none" />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-emerald-800 uppercase tracking-wider">
+                Confirmed Amount
+              </span>
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
               </div>
-            );
-          })}
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-950">
+              {loading ? '...' : `₹${stats.confirmedRevenue.toLocaleString('en-IN')}`}
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block shrink-0" />
+              <span>{stats.confirmedOrdersCount} confirmed &amp; paid orders</span>
+            </div>
+          </div>
+
+          {/* 2. NOT CONFIRMED AMOUNT (PROMINENT AMBER) */}
+          <div className="bg-white border-2 border-amber-400/80 rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-8 -mt-8 pointer-events-none" />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-amber-800 uppercase tracking-wider">
+                Not Confirmed Amount
+              </span>
+              <div className="p-2 rounded-xl bg-amber-100 text-amber-800 border border-amber-200">
+                <Clock className="w-4 h-4 text-amber-700" />
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-amber-950">
+              {loading ? '...' : `₹${stats.notConfirmedRevenue.toLocaleString('en-IN')}`}
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
+              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block shrink-0" />
+              <span>{stats.notConfirmedOrdersCount} pending / awaiting payment</span>
+            </div>
+          </div>
+
+          {/* 3. TOTAL ORDERS & TOTAL VALUE */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Total Orders</span>
+              <div className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200">
+                <ShoppingBag className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{loading ? '...' : stats.totalOrders}</div>
+            <p className="text-[11px] font-medium text-slate-500">
+              Gross: ₹{stats.totalRevenue.toLocaleString('en-IN')}
+            </p>
+          </div>
+
+          {/* 4. REGISTERED CUSTOMERS */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Customers</span>
+              <div className="p-2 rounded-xl bg-blue-100 text-blue-800 border border-blue-200">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{loading ? '...' : stats.activeCustomers}</div>
+            <p className="text-[11px] font-medium text-slate-500">Active household accounts</p>
+          </div>
+
+          {/* 5. WAITLIST DEMAND */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Waitlist Demand</span>
+              <div className="p-2 rounded-xl bg-purple-100 text-purple-800 border border-purple-200">
+                <MapPin className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{loading ? '...' : stats.waitlistCount}</div>
+            <p className="text-[11px] font-medium text-slate-500">Expansion area requests</p>
+          </div>
         </div>
 
         {/* INVENTORY ALERTS & ORDERS TABLE */}
@@ -189,7 +256,10 @@ export default function AdminDashboardPage() {
           {/* RECENT ORDERS TABLE */}
           <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="font-bold text-slate-900 text-base">Recent Customer Orders</h2>
+              <div>
+                <h2 className="font-bold text-slate-900 text-base">Recent Customer Orders</h2>
+                <p className="text-[11px] text-slate-500">Overview of confirmed and pending customer orders</p>
+              </div>
               <Link href="/admin/orders" className="text-xs font-bold text-emerald-800 hover:underline">
                 View All Orders →
               </Link>
@@ -213,19 +283,46 @@ export default function AdminDashboardPage() {
                       <th className="pb-3">Customer</th>
                       <th className="pb-3">Location</th>
                       <th className="pb-3">Status</th>
-                      <th className="pb-3 text-right">Total</th>
+                      <th className="pb-3">Confirmation</th>
+                      <th className="pb-3 text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {stats.recentOrders.map((o) => (
-                      <tr key={o.id} className="hover:bg-slate-50">
-                        <td className="py-3 font-bold text-slate-900">{o.id}</td>
+                      <tr
+                        key={o.id}
+                        onClick={() => {
+                          window.location.href = `/admin/orders?orderId=${encodeURIComponent(o.id)}`;
+                        }}
+                        className="hover:bg-emerald-50/70 transition cursor-pointer"
+                        title="Click to view full order details in Order Management"
+                      >
+                        <td className="py-3 font-bold text-emerald-900 underline decoration-emerald-300 underline-offset-2">
+                          {o.id}
+                        </td>
                         <td className="py-3 font-medium">{o.customer}</td>
                         <td className="py-3 text-slate-500">{o.location}</td>
                         <td className="py-3">
-                          <span className="bg-emerald-100 text-emerald-950 font-bold px-2 py-0.5 rounded-full text-[10px] capitalize">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
+                            o.isConfirmed
+                              ? 'bg-emerald-100 text-emerald-950 border border-emerald-200'
+                              : 'bg-amber-100 text-amber-950 border border-amber-200'
+                          }`}>
                             {o.status}
                           </span>
+                        </td>
+                        <td className="py-3">
+                          {o.isConfirmed ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                              Confirmed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                              Not Confirmed
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 font-bold text-right text-slate-900">₹{o.total}</td>
                       </tr>
@@ -242,7 +339,7 @@ export default function AdminDashboardPage() {
               <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Geofence Control</span>
               <h3 className="font-bold text-base">{stats.activeZoneName} Active Coverage</h3>
               <p className="text-xs text-emerald-200/80">
-                Authoritative boundary perimeter encompassing Singapore Township, Sanskruti Township, and surrounding Ghatkesar communities.
+                Authoritative boundary perimeter encompassing Singapore Township, Sanskruti Township, and surrounding Ghatkesar &amp; Pocharam communities.
               </p>
               <Link
                 href="/admin/delivery-zones"

@@ -1,0 +1,120 @@
+{
+  "settings": {
+    "id": "default-streak-settings",
+    "is_enabled": true,
+    "cycle_start_day": "Monday",
+    "cycle_end_day": "Sunday",
+    "order_cutoff_day": "Saturday",
+    "order_cutoff_time": "23:00",
+    "timezone": "Asia/Kolkata",
+    "min_order_value": 0,
+    "qualifying_statuses": [
+      "delivered"
+    ],
+    "auto_reset_missed": true,
+    "allow_coupon_stacking": false,
+    "notifications_enabled": true
+  },
+  "milestones": [
+    {
+      "id": "milestone-2w",
+      "title": "2-Week Sprout Starter",
+      "required_weeks": 2,
+      "discount_type": "percentage",
+      "discount_value": 2,
+      "min_order_amount": 299,
+      "max_discount_cap": 50,
+      "applicable_baskets": [
+        "all"
+      ],
+      "reward_expiry_days": 30,
+      "is_active": true,
+      "description": "Complete 2 consecutive weekly delivered orders to unlock 2% off.",
+      "badge_icon": "flame",
+      "sort_order": 1
+    },
+    {
+      "id": "milestone-4w",
+      "title": "4-Week Harvest Habit",
+      "required_weeks": 4,
+      "discount_type": "percentage",
+      "discount_value": 5,
+      "min_order_amount": 399,
+      "max_discount_cap": 100,
+      "applicable_baskets": [
+        "all"
+      ],
+      "reward_expiry_days": 30,
+      "is_active": true,
+      "description": "Complete 4 consecutive weekly delivered orders to unlock 5% off.",
+      "badge_icon": "flame",
+      "sort_order": 2
+    },
+    {
+      "id": "milestone-8w",
+      "title": "8-Week Farm Enthusiast",
+      "required_weeks": 8,
+      "discount_type": "percentage",
+      "discount_value": 8,
+      "min_order_amount": 499,
+      "max_discount_cap": 200,
+      "applicable_baskets": [
+        "all"
+      ],
+      "reward_expiry_days": 45,
+      "is_active": true,
+      "description": "Complete 8 consecutive weekly delivered orders to unlock 8% off.",
+      "badge_icon": "trophy",
+      "sort_order": 3
+    },
+    {
+      "id": "milestone-12w",
+      "title": "12-Week Harvest Champion",
+      "required_weeks": 12,
+      "discount_type": "percentage",
+      "discount_value": 12,
+      "min_order_amount": 499,
+      "max_discount_cap": 300,
+      "applicable_baskets": [
+        "all"
+      ],
+      "reward_expiry_days": 60,
+      "is_active": true,
+      "description": "Complete 12 consecutive weekly delivered orders to unlock a massive 12% off.",
+      "badge_icon": "medal",
+      "sort_order": 4
+    }
+  ],
+  "customerStreaks": {},
+  "stamps": [],
+  "rewards": [],
+  "redemptions": [],
+  "auditLogs": [
+    {
+      "id": "audit-1794335935724-990",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "action_type": "stamp_awarded",
+      "details": {
+        "orderId": "177a1536-9dfd-46c1-87bc-3c6cabe3422d",
+        "cycle_id": "2026-W46",
+        "newStreak": 1,
+        "total_stamps": 1
+      },
+      "reason": "Awarded weekly stamp for delivered order 177a1536-9dfd-46c1-87bc-3c6cabe3422d",
+      "created_at": "2026-11-10T18:38:55.724Z"
+    },
+    {
+      "id": "audit-1794333943989-742",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "action_type": "stamp_awarded",
+      "details": {
+        "orderId": "c4787139-6ea4-416b-8ad2-5db565c7a930",
+        "cycle_id": "2026-W44",
+        "newStreak": 1,
+        "total_stamps": 1
+      },
+      "reason": "Awarded weekly stamp for delivered order c4787139-6ea4-416b-8ad2-5db565c7a930",
+      "created_at": "2026-11-10T18:05:43.989Z"
+    }
+  ]
+}

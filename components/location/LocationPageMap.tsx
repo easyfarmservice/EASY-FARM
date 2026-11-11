@@ -34,7 +34,7 @@ export function LocationPageMap() {
               Locate Your Society or Apartment
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-xl leading-relaxed">
-              Drag the map or search your building. Just like Zepto &amp; Swiggy, the pin targets your exact doorstep in <strong>Ghatkesar &amp; Pocharam</strong>.
+              Drag the map or search your building. Just like Zepto &amp; Swiggy, the pin targets your exact doorstep in <strong>Ghatkesar &amp; Pocharam, Hyderabad (Active)</strong>.
             </p>
           </div>
         </div>

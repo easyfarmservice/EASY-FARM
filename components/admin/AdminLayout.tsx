@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, ShoppingBag, Users, Sprout, MapPin, Clock, BarChart3, ShieldCheck, Lock, LogOut, Menu, X, Truck, Gift } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Sprout, MapPin, Clock, BarChart3, ShieldCheck, Lock, LogOut, Menu, X, Truck, Gift, Flame, Scale } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 import { EasyFarmLogo } from '@/components/ui/Logo';
@@ -30,6 +30,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (!user) {
+          if (initialVerified) {
+            if (typeof document !== 'undefined') {
+              document.cookie = 'easyfarm_admin_verified=true; path=/; max-age=86400; SameSite=Lax';
+            }
+            if (isMounted) {
+              setIsAdmin(true);
+              setLoading(false);
+            }
+            return;
+          }
           if (isMounted) {
             setIsAdmin(false);
             setLoading(false);
@@ -38,6 +48,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             sessionStorage.removeItem('easyfarm_admin_verified');
             sessionStorage.removeItem('easyfarm_admin_email');
             localStorage.removeItem('easyfarm_admin_user');
+            document.cookie = 'easyfarm_admin_verified=; path=/; max-age=0; SameSite=Lax';
           }
           router.push('/login?next=/admin');
           return;
@@ -77,6 +88,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('easyfarm_admin_verified', 'true');
             sessionStorage.setItem('easyfarm_admin_email', user.email || '');
+            document.cookie = 'easyfarm_admin_verified=true; path=/; max-age=86400; SameSite=Lax';
           }
           if (isMounted) {
             setIsAdmin(true);
@@ -94,6 +106,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           sessionStorage.removeItem('easyfarm_admin_verified');
           sessionStorage.removeItem('easyfarm_admin_email');
           localStorage.removeItem('easyfarm_admin_user');
+          document.cookie = 'easyfarm_admin_verified=; path=/; max-age=0; SameSite=Lax';
         }
         router.push('/login?next=/admin');
       } catch (err) {
@@ -128,6 +141,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       sessionStorage.removeItem('easyfarm_admin_verified');
       sessionStorage.removeItem('easyfarm_admin_email');
       localStorage.removeItem('easyfarm_admin_user');
+      document.cookie = 'easyfarm_admin_verified=; path=/; max-age=0; SameSite=Lax';
     }
     router.push('/login?next=/admin');
   };
@@ -188,6 +202,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     { href: '/admin/discounts', label: 'Discounts Engine', icon: Clock },
     { href: '/admin/coupons', label: 'Coupons & Codes', icon: ShieldCheck },
     { href: '/admin/easy-coins', label: 'Easy Coins & Rewards', icon: Gift },
+    { href: '/admin/weekly-streak', label: 'Weekly Streak Loyalty', icon: Flame },
     { href: '/admin/delivery-zones', label: 'Delivery Zones & Geofencing', icon: MapPin },
     { href: '/admin/delivery-settings', label: 'Delivery Fees & Cutoff', icon: MapPin },
     { href: '/admin/service-areas', label: 'Service Areas', icon: MapPin },
@@ -195,6 +210,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     { href: '/admin/customers', label: 'Customer Base', icon: Users },
     { href: '/admin/farmers', label: 'Farmer Partners', icon: Sprout },
     { href: '/admin/audit-logs', label: 'System Audit Logs', icon: Clock },
+    { href: '/admin/legal', label: 'Legal Management', icon: Scale },
     { href: '/admin/settings', label: 'Business Settings', icon: ShieldCheck },
   ];
 

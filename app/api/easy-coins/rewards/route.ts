@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EasyCoinsService } from '@/services/easy-coins.service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

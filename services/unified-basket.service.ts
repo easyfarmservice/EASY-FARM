@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { Basket, Product, BasketItem, WeeklyBasket, WeeklyBasketItem, CustomerBasketCustomization } from '@/types/database';
 import {
@@ -85,11 +87,40 @@ const fallbackCustomizationsStore = new Map<string, any>();
 const fallbackBasketItemsStore = new Map<string, any[]>();
 const fallbackBasketPricesStore = new Map<string, { price: number; compare_at_price: number }>();
 
+const MASTER_PRODUCTS_FILE = path.join(process.cwd(), 'lib', 'data', 'master-products.json');
+
+function loadPersistedMasterProducts(): Product[] | null {
+  try {
+    if (fs.existsSync(MASTER_PRODUCTS_FILE)) {
+      const content = fs.readFileSync(MASTER_PRODUCTS_FILE, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function savePersistedMasterProducts(products: Product[]) {
+  try {
+    const dirname = path.dirname(MASTER_PRODUCTS_FILE);
+    if (!fs.existsSync(dirname)) {
+      fs.mkdirSync(dirname, { recursive: true });
+    }
+    fs.writeFileSync(MASTER_PRODUCTS_FILE, JSON.stringify(products, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[UnifiedBasketService] Failed to persist master products to disk:', err);
+  }
+}
+
 export class UnifiedBasketService {
   /**
-   * Loads all master products from the database
+   * Loads all master products from durable disk catalog + database
    */
   static async getAllProducts(): Promise<Product[]> {
+    const persisted = loadPersistedMasterProducts();
+
     try {
       const supabase = createAdminClient();
       const { data, error } = await supabase
@@ -97,24 +128,65 @@ export class UnifiedBasketService {
         .select('*')
         .order('name', { ascending: true });
 
-      if (error || !data || data.length === 0) {
-        return this.getDefaultProducts();
-      }
+      if (!error && data && data.length > 0) {
+        const dbList: Product[] = data.map((p) => ({
+          ...p,
+          cost_price: Number(p.cost_price || p.price * 0.75),
+          cost_unit: p.cost_unit || p.unit || 'kg',
+          market_price: Number(p.market_price || p.price * 1.15),
+          market_source: p.market_source || 'Telangana Rythu Bazaar',
+          market_updated_at: p.market_updated_at || new Date().toISOString(),
+          is_seasonal: Boolean(p.is_seasonal),
+          is_swap_eligible: p.is_swap_eligible !== false,
+          eligible_baskets: p.eligible_baskets || ['staple-basket', 'green-basket', 'special-basket', 'custom-basket'],
+        }));
 
-      return data.map((p) => ({
-        ...p,
-        cost_price: Number(p.cost_price || p.price * 0.75),
-        cost_unit: p.cost_unit || p.unit || 'kg',
-        market_price: Number(p.market_price || p.price * 1.15),
-        market_source: p.market_source || 'Telangana Rythu Bazaar',
-        market_updated_at: p.market_updated_at || new Date().toISOString(),
-        is_seasonal: Boolean(p.is_seasonal),
-        is_swap_eligible: p.is_swap_eligible !== false,
-        eligible_baskets: p.eligible_baskets || ['staple-basket', 'green-basket', 'special-basket', 'custom-basket'],
-      }));
+        // Merge with persisted or default 24 crops so all 24 crops are available and retain their active status & admin price edits
+        const baseList = persisted && persisted.length > 0 ? persisted : this.getDefaultProducts();
+        const mergedMap = new Map<string, Product>();
+        for (const item of baseList) {
+          mergedMap.set(item.id, item);
+        }
+        for (const dbItem of dbList) {
+          const existingBySlug = Array.from(mergedMap.values()).find(
+            (x) => x.id === dbItem.id || (x.slug && x.slug === dbItem.slug)
+          );
+          if (existingBySlug) {
+            const persistedMatch = persisted?.find(
+              (p) => p.id === existingBySlug.id || p.id === dbItem.id || (p.slug && p.slug === dbItem.slug)
+            );
+            const persistedTime = persistedMatch?.updated_at ? new Date(persistedMatch.updated_at).getTime() : 0;
+            const dbTime = dbItem.updated_at ? new Date(dbItem.updated_at).getTime() : 0;
+            const preferPersisted = Boolean(persistedMatch && persistedTime >= dbTime);
+
+            mergedMap.set(existingBySlug.id, {
+              ...existingBySlug,
+              ...dbItem,
+              ...(preferPersisted ? persistedMatch : {}),
+              id: existingBySlug.id,
+              active: persistedMatch !== undefined ? persistedMatch.active : dbItem.active,
+            });
+          } else {
+            mergedMap.set(dbItem.id, dbItem);
+          }
+        }
+        const finalProducts = Array.from(mergedMap.values());
+        if (!persisted) {
+          savePersistedMasterProducts(finalProducts);
+        }
+        return finalProducts;
+      }
     } catch {
-      return this.getDefaultProducts();
+      // Fallback
     }
+
+    if (persisted && persisted.length > 0) {
+      return persisted;
+    }
+
+    const defaults = this.getDefaultProducts();
+    savePersistedMasterProducts(defaults);
+    return defaults;
   }
 
   /**
@@ -338,6 +410,8 @@ export class UnifiedBasketService {
 
       return list.map((item, idx) => {
         const p = getItem(item.slug);
+        const livePrice = calculateItemPriceForQuantity(p.price || item.price, p.unit || item.unit, item.qty, item.unit);
+        const liveCompare = calculateMarketPriceForQuantity(p.market_price ?? item.compare, p.unit || item.unit, item.qty, item.unit) || item.compare;
         return {
           id: `bi-staple-${idx + 1}`,
           basket_id: basketId,
@@ -345,10 +419,10 @@ export class UnifiedBasketService {
           product: p,
           quantity: item.qty,
           unit: item.unit,
-          item_price: item.price,
-          compare_at_price: item.compare,
-          unit_cost_price: p.cost_price || Math.round(item.price * 0.7),
-          market_price_ref: item.compare,
+          item_price: livePrice,
+          compare_at_price: liveCompare,
+          unit_cost_price: p.cost_price || Math.round(livePrice * 0.7),
+          market_price_ref: liveCompare,
           sort_order: idx + 1,
           is_default: item.isFixed,
           is_fixed: item.isFixed,
@@ -371,6 +445,8 @@ export class UnifiedBasketService {
 
       return list.map((item, idx) => {
         const p = getItem(item.slug);
+        const livePrice = calculateItemPriceForQuantity(p.price || item.price, p.unit || item.unit, item.qty, item.unit);
+        const liveCompare = calculateMarketPriceForQuantity(p.market_price ?? item.compare, p.unit || item.unit, item.qty, item.unit) || item.compare;
         return {
           id: `bi-green-${idx + 1}`,
           basket_id: basketId,
@@ -378,10 +454,10 @@ export class UnifiedBasketService {
           product: p,
           quantity: item.qty,
           unit: item.unit,
-          item_price: item.price,
-          compare_at_price: item.compare,
-          unit_cost_price: p.cost_price || Math.round(item.price * 0.7),
-          market_price_ref: item.compare,
+          item_price: livePrice,
+          compare_at_price: liveCompare,
+          unit_cost_price: p.cost_price || Math.round(livePrice * 0.7),
+          market_price_ref: liveCompare,
           sort_order: idx + 1,
           is_default: item.isFixed,
           is_fixed: item.isFixed,
@@ -404,6 +480,8 @@ export class UnifiedBasketService {
 
       return list.map((item, idx) => {
         const p = getItem(item.slug);
+        const livePrice = calculateItemPriceForQuantity(p.price || item.price, p.unit || item.unit, item.qty, item.unit);
+        const liveCompare = calculateMarketPriceForQuantity(p.market_price ?? item.compare, p.unit || item.unit, item.qty, item.unit) || item.compare;
         return {
           id: `bi-special-${idx + 1}`,
           basket_id: basketId,
@@ -411,10 +489,10 @@ export class UnifiedBasketService {
           product: p,
           quantity: item.qty,
           unit: item.unit,
-          item_price: item.price,
-          compare_at_price: item.compare,
-          unit_cost_price: p.cost_price || Math.round(item.price * 0.7),
-          market_price_ref: item.compare,
+          item_price: livePrice,
+          compare_at_price: liveCompare,
+          unit_cost_price: p.cost_price || Math.round(livePrice * 0.7),
+          market_price_ref: liveCompare,
           sort_order: idx + 1,
           is_default: item.isFixed,
           is_fixed: item.isFixed,
@@ -586,6 +664,7 @@ export class UnifiedBasketService {
    */
   static async saveMasterProduct(product: Partial<Product>): Promise<{ success: boolean; product: Product }> {
     const supabase = createAdminClient();
+    const currentList = await this.getAllProducts();
 
     const payload: any = {
       name: product.name,
@@ -606,26 +685,124 @@ export class UnifiedBasketService {
       updated_at: new Date().toISOString(),
     };
 
-    if (product.id && !product.id.startsWith('p-')) {
-      const { data, error } = await supabase
-        .from('products')
-        .update(payload)
-        .eq('id', product.id)
-        .select()
-        .single();
+    let savedRecord: Product = {
+      id: product.id || `p-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      ...payload,
+    };
 
-      if (!error && data) return { success: true, product: data };
+    try {
+      if (product.id && !product.id.startsWith('p-')) {
+        const { data, error } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', product.id)
+          .select()
+          .single();
+
+        if (!error && data) savedRecord = { ...savedRecord, ...data };
+      } else {
+        // Check if a product with the same slug exists in DB first
+        const { data: existingBySlug } = await supabase
+          .from('products')
+          .select('id')
+          .eq('slug', payload.slug)
+          .maybeSingle();
+
+        if (existingBySlug?.id) {
+          const { data, error } = await supabase
+            .from('products')
+            .update(payload)
+            .eq('id', existingBySlug.id)
+            .select()
+            .single();
+          if (!error && data) savedRecord = { ...savedRecord, ...data, id: product.id || data.id };
+        } else {
+          const { data, error } = await supabase
+            .from('products')
+            .insert({ ...payload, created_at: new Date().toISOString() })
+            .select()
+            .single();
+
+          if (!error && data) savedRecord = { ...savedRecord, ...data, id: product.id || data.id };
+        }
+      }
+    } catch {}
+
+    const idx = currentList.findIndex(
+      (p) => p.id === product.id || (p.slug && p.slug === payload.slug)
+    );
+    if (idx >= 0) {
+      currentList[idx] = { ...currentList[idx], ...savedRecord };
     } else {
-      const { data, error } = await supabase
-        .from('products')
-        .insert({ ...payload, created_at: new Date().toISOString() })
-        .select()
-        .single();
+      currentList.unshift(savedRecord);
+    }
+    savePersistedMasterProducts(currentList);
 
-      if (!error && data) return { success: true, product: data };
+    return { success: true, product: savedRecord };
+  }
+
+  /**
+   * Bulk enable or disable master vegetable products at once
+   */
+  static async bulkUpdateProductsStatus(
+    ids: string[],
+    active: boolean
+  ): Promise<{ success: boolean; updatedCount: number; products: Product[] }> {
+    const currentList = await this.getAllProducts();
+    const idSet = new Set(ids);
+    const nowIso = new Date().toISOString();
+    let updatedCount = 0;
+
+    for (const prod of currentList) {
+      if (idSet.has(prod.id) || ids.includes('ALL')) {
+        prod.active = active;
+        prod.updated_at = nowIso;
+        updatedCount++;
+      }
     }
 
-    return { success: true, product: { id: product.id || `p-${Date.now()}`, ...payload } };
+    savePersistedMasterProducts(currentList);
+
+    try {
+      const supabase = createAdminClient();
+      const uuidIds = ids.filter((id) => !id.startsWith('p-') && id !== 'ALL');
+      if (ids.includes('ALL')) {
+        await supabase
+          .from('products')
+          .update({ active, updated_at: nowIso })
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+      } else if (uuidIds.length > 0) {
+        await supabase
+          .from('products')
+          .update({ active, updated_at: nowIso })
+          .in('id', uuidIds);
+      }
+    } catch {}
+
+    return {
+      success: true,
+      updatedCount,
+      products: currentList,
+    };
+  }
+
+  /**
+   * Deletes a product from master catalog
+   */
+  static async deleteMasterProduct(id: string): Promise<{ success: boolean }> {
+    const currentList = await this.getAllProducts();
+    const filtered = currentList.filter((p) => p.id !== id);
+    savePersistedMasterProducts(filtered);
+
+    try {
+      if (!id.startsWith('p-')) {
+        const supabase = createAdminClient();
+        await supabase.from('products').delete().eq('id', id);
+      }
+    } catch {}
+
+    return { success: true };
   }
 
   /**
@@ -676,7 +853,7 @@ export class UnifiedBasketService {
       const savedWeekly = fallbackWeeklyStore.get(storeKey);
 
       // Check DB if available
-      let dbWeeklyStatus: 'draft' | 'published' = savedWeekly?.status || 'published';
+      const dbWeeklyStatus: 'draft' | 'published' = savedWeekly?.status || 'published';
       let weeklyItems = savedWeekly?.items;
 
       if (!weeklyItems || weeklyItems.length === 0) {
@@ -788,7 +965,26 @@ export class UnifiedBasketService {
   static async getCustomerUpcomingBasket(basketId: string, customerId?: string, deliveryWeek?: string) {
     const targetWeek = deliveryWeek || getNextDeliverySunday();
     const allBaskets = await this.getAllBasketsWithPricing();
-    const currentBasketObj = allBaskets.find((b) => b.basket.id === basketId || b.basket.slug === basketId)?.basket;
+    const rawId = (basketId || '').toLowerCase().trim();
+
+    // Resilient matching by ID, slug, or standard aliases
+    let currentBasketObj = allBaskets.find((b) => {
+      const bId = (b.basket.id || '').toLowerCase();
+      const bSlug = (b.basket.slug || '').toLowerCase();
+      if (bId === rawId || bSlug === rawId) return true;
+      if (rawId.includes('staple') && (bSlug.includes('staple') || bId.endsWith('1'))) return true;
+      if (rawId.includes('custom') && (bSlug.includes('custom') || bId.endsWith('4'))) return true;
+      return false;
+    })?.basket;
+
+    // Direct fallback if not found in allBaskets
+    if (!currentBasketObj) {
+      if (rawId.includes('staple') || rawId.endsWith('1')) {
+        currentBasketObj = allBaskets.find(b => b.basket.id.endsWith('1'))?.basket || (EASY_FARM_BASKETS[0] as unknown as Basket);
+      } else if (rawId.includes('custom') || rawId.endsWith('4')) {
+        currentBasketObj = allBaskets.find(b => b.basket.id.endsWith('4'))?.basket || (EASY_FARM_BASKETS[3] as unknown as Basket);
+      }
+    }
 
     // Safety: check inactive or unpublished
     if (!currentBasketObj || currentBasketObj.active === false) {
@@ -894,9 +1090,18 @@ export class UnifiedBasketService {
       // If basketSwapItems is empty in DB, load active products permitted for this basket
       if (eligibleAlternatives.length === 0) {
         const defaultIds = new Set(defaultItems.map((d) => d.productId));
-        const matchedSlug = currentBasketObj.slug;
+        const matchedSlug = currentBasketObj.slug?.toLowerCase() || '';
         eligibleAlternatives = allProducts
-          .filter((p) => p.active !== false && !defaultIds.has(p.id) && (p.eligible_baskets || []).includes(matchedSlug))
+          .filter((p) => {
+            if (p.active === false || defaultIds.has(p.id)) return false;
+            const eligible = (p.eligible_baskets || []).map((s: string) => s.toLowerCase());
+            return (
+              eligible.includes(matchedSlug) ||
+              eligible.includes('staple-box') ||
+              eligible.includes('staple-basket') ||
+              eligible.includes('staple')
+            );
+          })
           .map((p) => ({
             id: p.id,
             name: p.name,

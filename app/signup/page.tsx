@@ -21,6 +21,7 @@ function SignupFormContent() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState(initialEmail);
   const [otpCode, setOtpCode] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Status & Feedback
   const [loading, setLoading] = useState(false);
@@ -59,6 +60,11 @@ function SignupFormContent() {
       return;
     }
 
+    if (!agreedToTerms) {
+      setError('You must agree to the Terms & Conditions and acknowledge that you have read the Privacy Policy to register.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccessNotice(null);
@@ -66,7 +72,7 @@ function SignupFormContent() {
     try {
       const supabase = createClient();
 
-      let { error: otpError } = await supabase.auth.signInWithOtp({
+      const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
           shouldCreateUser: true,
@@ -79,21 +85,37 @@ function SignupFormContent() {
       });
 
       if (otpError) {
-        try {
-          const fallbackRes = await fetch('/api/auth/send-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, type: 'signup', name: cleanName, phone: cleanPhone }),
-          });
-          const fallbackData = await fallbackRes.json();
-          if (fallbackRes.ok && fallbackData.success) {
-            otpError = null;
-          }
-        } catch (_) {}
-      }
-
-      if (otpError) {
         const msg = otpError.message.toLowerCase();
+        // Server-side Resend OTP fallback if Supabase built-in mailer is rate-limited
+        if (
+          msg.includes('error sending') ||
+          msg.includes('magic link') ||
+          msg.includes('confirmation email') ||
+          msg.includes('rate limit') ||
+          msg.includes('too many') ||
+          (otpError as any).status === 500
+        ) {
+          try {
+            const fallbackRes = await fetch('/api/auth/send-otp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: cleanEmail,
+                type: 'signup',
+                name: cleanName,
+                phone: cleanPhone,
+              }),
+            });
+            const fallbackData = await fallbackRes.json();
+            if (fallbackRes.ok && fallbackData.success) {
+              setStep('otp');
+              setCooldown(60);
+              setSuccessNotice(fallbackData.message || `Verification code sent to ${cleanEmail}`);
+              return;
+            }
+          } catch {}
+        }
+
         if (msg.includes('rate limit') || msg.includes('too many')) {
           setError('Too many requests. Please wait a few moments before trying again.');
         } else if (
@@ -244,6 +266,25 @@ function SignupFormContent() {
             role: 'customer',
           })
         );
+      }
+
+      // Record explicit legal acceptance on server
+      try {
+        await fetch('/api/legal/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerId: verifiedUser.id,
+            acceptanceSource: 'website',
+            eventType: 'registration',
+            metadata: {
+              fullName: cleanName,
+              email: cleanEmail,
+            },
+          }),
+        });
+      } catch (legalErr) {
+        console.warn('Legal acceptance registration log notice:', legalErr);
       }
 
       setSuccessNotice('Account created successfully! Redirecting...');
@@ -594,10 +635,51 @@ function SignupFormContent() {
                   </div>
                 </div>
 
+                {/* MANDATORY LEGAL ACCEPTANCE CHECKBOX */}
+                <div className="pt-1.5 pb-1">
+                  <label className="flex items-start gap-2.5 cursor-pointer text-xs text-[#4E5C53] select-none group">
+                    <input
+                      type="checkbox"
+                      id="legalTermsCheckbox"
+                      checked={agreedToTerms}
+                      onChange={(e) => {
+                        setAgreedToTerms(e.target.checked);
+                        if (error && error.includes('Terms & Conditions')) {
+                          setError(null);
+                        }
+                      }}
+                      className="w-4 h-4 mt-0.5 rounded border border-[#C5CEBE] text-[#123D2B] focus:ring-2 focus:ring-[#1D6845] shrink-0 cursor-pointer accent-[#123D2B]"
+                    />
+                    <span className="leading-relaxed">
+                      I agree to the{' '}
+                      <Link
+                        href="/terms-and-conditions"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-[#123D2B] hover:text-[#0B291D] underline inline-block"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms &amp; Conditions
+                      </Link>{' '}
+                      and acknowledge that I have read the{' '}
+                      <Link
+                        href="/privacy-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold text-[#123D2B] hover:text-[#0B291D] underline inline-block"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Privacy Policy
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading || !email || !fullName}
-                  className="w-full h-[52px] rounded-xl bg-[#123D2B] hover:bg-[#0B291D] disabled:opacity-50 text-white font-semibold text-sm sm:text-[15px] transition shadow-[0_4px_14px_rgba(18,61,43,0.25)] hover:shadow-[0_6px_20px_rgba(18,61,43,0.35)] flex items-center justify-center gap-2 cursor-pointer mt-2"
+                  className="w-full h-[52px] rounded-xl bg-[#123D2B] hover:bg-[#0B291D] disabled:opacity-50 text-white font-semibold text-sm sm:text-[15px] transition shadow-[0_4px_14px_rgba(18,61,43,0.25)] hover:shadow-[0_6px_20px_rgba(18,61,43,0.35)] flex items-center justify-center gap-2 cursor-pointer mt-1"
                 >
                   {loading ? (
                     <>

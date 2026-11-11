@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { CustomerCoinsOverview, EasyCoinsLedgerEntry, RewardClaim } from '@/types/easy-coins';
 import { EasyFarmLoader } from '@/components/ui/EasyFarmLoader';
+import { RewardClaimSelector } from '@/components/rewards/RewardClaimSelector';
 
 interface EasyCoinsAccountTabProps {
   customerId?: string;
@@ -35,11 +36,14 @@ export function EasyCoinsAccountTab({ customerId, customerName }: EasyCoinsAccou
     async function fetchCoins() {
       try {
         setLoading(true);
-        const url = customerId
-          ? `/api/easy-coins/balance?customerId=${customerId}`
+        const targetId =
+          customerId ||
+          (typeof window !== 'undefined' ? localStorage.getItem('easyfarm_customer_profile_id') : null);
+        const url = targetId
+          ? `/api/easy-coins/balance?customerId=${encodeURIComponent(targetId)}`
           : '/api/easy-coins/balance';
 
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         const data = await res.json();
         if (data.success) {
           setOverview(data);
@@ -52,6 +56,10 @@ export function EasyCoinsAccountTab({ customerId, customerName }: EasyCoinsAccou
     }
 
     fetchCoins();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('easycoins-updated', fetchCoins);
+      return () => window.removeEventListener('easycoins-updated', fetchCoins);
+    }
   }, [customerId]);
 
   if (loading) {
@@ -105,18 +113,21 @@ export function EasyCoinsAccountTab({ customerId, customerName }: EasyCoinsAccou
 
             <div>
               <p className="text-xs uppercase tracking-wider text-emerald-300 font-bold">
-                Available Loyalty Balance
+                Available Loyalty Balance (10 Easy Coins = ₹1 Rupee)
               </p>
-              <div className="flex items-baseline gap-3 mt-1">
+              <div className="flex flex-wrap items-baseline gap-3 mt-1">
                 <span className="text-4xl sm:text-5xl font-black text-amber-300 tracking-tight">
                   {balance}
                 </span>
                 <span className="text-lg font-bold text-emerald-200">Easy Coins</span>
+                <span className="px-3 py-1 rounded-xl bg-amber-400 text-emerald-950 font-black text-xs shadow-sm">
+                  = ₹{(balance / 10).toFixed(2)} Basket Discount Value
+                </span>
               </div>
             </div>
 
             <p className="text-xs text-emerald-200/90 max-w-lg leading-relaxed">
-              Collect coins with every weekly vegetable basket. Redeem them at checkout for everyday household essentials like toothpaste, ayurvedic soaps, scrub pads, and wipes delivered free inside your vegetable box.
+              Collect coins with every weekly vegetable basket. Apply your Easy Coins at checkout for an instant basket purchase discount (<strong>10 Easy Coins = ₹1 Rupee</strong>) or claim everyday household essentials delivered free inside your vegetable box.
             </p>
           </div>
 
@@ -149,14 +160,20 @@ export function EasyCoinsAccountTab({ customerId, customerName }: EasyCoinsAccou
             Earn 10 Easy Coins on every ₹100 of farm vegetable orders.
           </span>
           <Link
-            href="/cart"
+            href="/checkout"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-bold transition shadow-md self-start sm:self-auto"
           >
-            <span>Order Weekly Basket</span>
+            <span>Proceed to Checkout</span>
             <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
           </Link>
         </div>
       </div>
+
+      {/* INTERACTIVE REWARD CLAIM SELECTOR (UP TO BALANCE) */}
+      <RewardClaimSelector
+        orderSubtotal={185}
+        customerBalance={balance}
+      />
 
       {/* 2. HOW EASY COINS WORKS STEPS */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
@@ -183,9 +200,9 @@ export function EasyCoinsAccountTab({ customerId, customerName }: EasyCoinsAccou
               <div className="w-8 h-8 rounded-xl bg-amber-500 text-emerald-950 font-black text-xs flex items-center justify-center">
                 2
               </div>
-              <h4 className="text-xs font-bold text-amber-950 pt-1">Claim Physical Essentials</h4>
+              <h4 className="text-xs font-bold text-amber-950 pt-1">Claim Extra Items up to Balance</h4>
               <p className="text-[11px] text-amber-900/80 leading-relaxed">
-                Choose 1 free everyday product (Oral care, Personal care, Cleaning essentials) at checkout.
+                Claim any number of free everyday products (Oral care, Personal care, Cleaning essentials) up to your Easy Coins balance.
               </p>
             </div>
           </div>

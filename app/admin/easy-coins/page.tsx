@@ -265,15 +265,20 @@ export default function AdminEasyCoinsPage() {
   };
 
   // 6. Bulk Operations Handlers
-  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'update_stock', stock_quantity?: number) => {
-    if (selectedProductIds.length === 0) return;
+  const handleBulkAction = async (
+    action: 'activate' | 'deactivate' | 'update_stock',
+    stock_quantity?: number,
+    overrideIds?: string[]
+  ) => {
+    const targetIds = overrideIds || selectedProductIds;
+    if (targetIds.length === 0) return;
     setBulkProcessing(true);
     try {
       const res = await fetch('/api/admin/easy-coins/products', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids: selectedProductIds,
+          ids: targetIds,
           action,
           stock_quantity,
         }),
@@ -285,7 +290,12 @@ export default function AdminEasyCoinsPage() {
         await loadAllData();
         setFeedback({
           type: 'success',
-          message: `Bulk update applied to ${data.updatedCount} products successfully!`,
+          message:
+            action === 'activate'
+              ? `Enabled ${data.updatedCount} item(s) for customer purchase & claiming!`
+              : action === 'deactivate'
+              ? `Disabled ${data.updatedCount} item(s) from customer catalog.`
+              : `Bulk stock update applied to ${data.updatedCount} products successfully!`,
         });
       } else {
         throw new Error(data.error);
@@ -295,6 +305,17 @@ export default function AdminEasyCoinsPage() {
     } finally {
       setBulkProcessing(false);
     }
+  };
+
+  const handleToggleAllCatalogItems = async (action: 'activate' | 'deactivate') => {
+    const allIds = products.map((p) => p.id);
+    if (allIds.length === 0) return;
+    await handleBulkAction(action, undefined, allIds);
+  };
+
+  const handleToggleSingleProductStatus = async (prod: RewardProduct) => {
+    const nextAction = prod.is_active && !prod.is_archived ? 'deactivate' : 'activate';
+    await handleBulkAction(nextAction, undefined, [prod.id]);
   };
 
   const toggleSelectAll = () => {
@@ -509,7 +530,7 @@ export default function AdminEasyCoinsPage() {
         )}
 
         {/* SEGMENTED NAVIGATION TABS */}
-        <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl overflow-x-auto shadow-xs">
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1.5 rounded-2xl overflow-x-auto scrollbar-none no-scrollbar shadow-xs">
           <button
             onClick={() => setActiveTab('catalog')}
             className={`flex-1 min-w-[140px] py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
@@ -574,6 +595,43 @@ export default function AdminEasyCoinsPage() {
         {/* ── TAB 1: REWARD CATALOG ────────────────────────────────────────── */}
         {activeTab === 'catalog' && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+            {/* Global 1-Click Enable / Disable All Items at Once Bar */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-300">
+                    Quick Catalog Access Control
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-bold text-emerald-100">
+                    {products.filter((p) => p.is_active && !p.is_archived).length} / {products.length} Enabled
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-100/90 mt-0.5">
+                  Enable or disable all reward items at once so customers can claim &amp; purchase any or all enabled items up to their Easy Coins balance.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllCatalogItems('activate')}
+                  disabled={bulkProcessing}
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Enable All Items at Once ({products.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllCatalogItems('deactivate')}
+                  disabled={bulkProcessing}
+                  className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Disable All Items</span>
+                </button>
+              </div>
+            </div>
+
             {/* Filter toolbar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 border-b border-slate-100 pb-4">
               <div className="relative">
@@ -779,24 +837,47 @@ export default function AdminEasyCoinsPage() {
                           </span>
                         </td>
                         <td className="py-3 px-3 text-center">
-                          {prod.is_archived ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                              Archived
-                            </span>
-                          ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSingleProductStatus(prod)}
+                            disabled={bulkProcessing}
+                            title="Click to enable or disable this item for customers"
+                            className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full transition cursor-pointer ${
+                              prod.is_archived
+                                ? 'bg-slate-200 text-slate-600 hover:bg-emerald-100 hover:text-emerald-800'
+                                : prod.is_active
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200'
+                            }`}
+                          >
                             <span
-                              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                                prod.is_active
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                prod.is_active && !prod.is_archived ? 'bg-emerald-600' : 'bg-amber-600'
                               }`}
-                            >
-                              {prod.is_active ? 'Active' : 'Inactive (Draft)'}
+                            />
+                            <span>
+                              {prod.is_archived
+                                ? 'Archived (Click to Enable)'
+                                : prod.is_active
+                                ? 'Enabled'
+                                : 'Disabled'}
                             </span>
-                          )}
+                          </button>
                         </td>
                         <td className="py-3 px-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSingleProductStatus(prod)}
+                              disabled={bulkProcessing}
+                              className={`px-2.5 py-1.5 rounded-lg font-bold text-xs transition border ${
+                                prod.is_active && !prod.is_archived
+                                  ? 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                                  : 'bg-emerald-800 text-white border-emerald-800 hover:bg-emerald-900'
+                              }`}
+                            >
+                              {prod.is_active && !prod.is_archived ? 'Disable' : 'Enable'}
+                            </button>
                             <button
                               type="button"
                               onClick={() => {

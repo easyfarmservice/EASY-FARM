@@ -11,6 +11,7 @@ const CalculatePayloadSchema = z.object({
       quantity: z.number().int().positive('Quantity must be a positive integer'),
       customPrice: z.number().optional(),
       compareAtPrice: z.number().optional(),
+      customizedItems: z.array(z.any()).optional(),
     }).refine((item) => Boolean(item.id || item.basketId), {
       message: 'Either id or basketId is required for each cart item',
     })
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
       quantity: item.quantity,
       customPrice: item.customPrice,
       compareAtPrice: item.compareAtPrice,
+      customizedItems: item.customizedItems,
     }));
 
     const cleanEmail = customerEmail && customerEmail.trim().length > 0 ? customerEmail.trim() : undefined;

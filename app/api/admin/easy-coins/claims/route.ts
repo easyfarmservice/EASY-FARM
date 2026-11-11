@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EasyCoinsService } from '@/services/easy-coins.service';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { verifyAdminAuth } from '@/lib/security/auth-guard';
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.authorized || auth.response) {
+    return auth.response || NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
@@ -44,6 +50,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.authorized || auth.response) {
+    return auth.response || NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
     const { claimId, status, notes } = body;

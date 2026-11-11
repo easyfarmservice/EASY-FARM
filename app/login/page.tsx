@@ -96,7 +96,7 @@ function LoginFormContent() {
     try {
       const supabase = createClient();
 
-      let { error: otpError } = await supabase.auth.signInWithOtp({
+      const { error: otpError } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
           shouldCreateUser: false,
@@ -104,21 +104,32 @@ function LoginFormContent() {
       });
 
       if (otpError) {
-        try {
-          const fallbackRes = await fetch('/api/auth/send-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, type: 'login' }),
-          });
-          const fallbackData = await fallbackRes.json();
-          if (fallbackRes.ok && fallbackData.success) {
-            otpError = null;
-          }
-        } catch (_) {}
-      }
-
-      if (otpError) {
         const msg = otpError.message.toLowerCase();
+        // Server-side Resend OTP fallback if Supabase built-in mailer is rate-limited
+        if (
+          msg.includes('error sending') ||
+          msg.includes('magic link') ||
+          msg.includes('confirmation email') ||
+          msg.includes('rate limit') ||
+          msg.includes('too many') ||
+          (otpError as any).status === 500
+        ) {
+          try {
+            const fallbackRes = await fetch('/api/auth/send-otp', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: cleanEmail, type: 'login' }),
+            });
+            const fallbackData = await fallbackRes.json();
+            if (fallbackRes.ok && fallbackData.success) {
+              setStep('otp');
+              setCooldown(60);
+              setSuccessNotice(fallbackData.message || `Verification code sent to ${cleanEmail}`);
+              return;
+            }
+          } catch {}
+        }
+
         if (msg.includes('signups not allowed') || msg.includes('user not found')) {
           setError(`No account found for "${cleanEmail}". Please create an account to get started.`);
         } else if (msg.includes('rate limit') || msg.includes('too many')) {
@@ -234,6 +245,13 @@ function LoginFormContent() {
             role: isAdmin ? 'admin' : 'customer',
           })
         );
+        if (isAdmin) {
+          document.cookie = 'easyfarm_admin_verified=true; path=/; max-age=86400; SameSite=Lax';
+          document.cookie = 'easyfarm_customer_role=; path=/; max-age=0; SameSite=Lax';
+        } else {
+          document.cookie = 'easyfarm_admin_verified=; path=/; max-age=0; SameSite=Lax';
+          document.cookie = 'easyfarm_customer_role=customer; path=/; max-age=86400; SameSite=Lax';
+        }
       }
 
       setSuccessNotice('Signed in successfully! Redirecting...');
@@ -390,6 +408,8 @@ function LoginFormContent() {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('easyfarm_admin_verified', 'true');
         sessionStorage.setItem('easyfarm_admin_email', data.user.email || cleanEmail);
+        document.cookie = 'easyfarm_admin_verified=true; path=/; max-age=86400; SameSite=Lax';
+        document.cookie = 'easyfarm_customer_role=; path=/; max-age=0; SameSite=Lax';
         localStorage.setItem(
           'easyfarm_admin_user',
           JSON.stringify({

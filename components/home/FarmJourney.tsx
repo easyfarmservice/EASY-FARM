@@ -27,7 +27,7 @@ export function FarmJourney({
   const displayTagline = tagline || 'Farm-To-Home Pipeline';
   const displayTitle = title || 'The 36-Hour Freshness Journey';
   const displaySubtitle =
-    subtitle || 'Follow the journey of your weekly vegetables from regional Telangana farms straight to your Ghatkesar dining table.';
+    subtitle || 'Follow the journey of your weekly vegetables from regional Telangana farms straight to your Ghatkesar & Pocharam, Hyderabad (Active) dining table.';
 
   return (
     <section className="py-16 md:py-24 bg-white border-b border-slate-100 relative overflow-hidden" id="journey">

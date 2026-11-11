@@ -6,7 +6,7 @@ import { ChevronDown, HelpCircle } from 'lucide-react';
 const DEFAULT_FAQS = [
   {
     q: 'Where do you deliver?',
-    a: 'Easy Farm currently delivers to selected gated communities and residential localities in Ghatkesar & Pocharam, Hyderabad — including Singapore Township, Sanskruti Township, Rajeev Gruha Kalpa, Modi Emerald Heights, and surrounding residences.',
+    a: 'Easy Farm currently delivers to selected gated communities and residential localities in Ghatkesar & Pocharam, Hyderabad (Active) — including Singapore Township, Sanskruti Township, Rajeev Gruha Kalpa, Modi Emerald Heights, and surrounding residences.',
   },
   {
     q: 'When do weekly orders close?',

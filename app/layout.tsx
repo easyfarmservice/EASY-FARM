@@ -17,15 +17,15 @@ export const metadata: Metadata = {
     'Order fresh weekly vegetable baskets sourced directly from local Telangana farmers and delivered every Sunday to Singapore Township, Emerald Heights & gated communities in Ghatkesar, Hyderabad.',
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon.png', sizes: '512x512', type: 'image/png' },
-      { url: '/images/logo-icon.png', sizes: 'any', type: 'image/png' },
+      { url: '/favicon.ico?v=5', sizes: 'any' },
+      { url: '/icon.png?v=5', sizes: '512x512', type: 'image/png' },
+      { url: '/images/logo-icon.png?v=5', sizes: 'any', type: 'image/png' },
     ],
     apple: [
-      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
-      { url: '/images/logo-icon.png', sizes: '180x180', type: 'image/png' },
+      { url: '/apple-icon.png?v=5', sizes: '180x180', type: 'image/png' },
+      { url: '/images/logo-icon.png?v=5', sizes: '180x180', type: 'image/png' },
     ],
-    shortcut: ['/favicon.ico'],
+    shortcut: ['/favicon.ico?v=5'],
   },
 };
 
@@ -36,6 +36,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${dmSans.variable} ${fraunces.variable}`}>
+      <head>
+        <link rel="icon" href="/favicon.ico?v=5" sizes="any" />
+        <link rel="icon" href="/icon.png?v=5" type="image/png" sizes="512x512" />
+        <link rel="apple-touch-icon" href="/apple-icon.png?v=5" sizes="180x180" />
+      </head>
       <body className="font-sans antialiased bg-white text-slate-900 selection:bg-emerald-200 selection:text-emerald-900">
         <InitialSplashScreen />
         <Suspense fallback={null}>

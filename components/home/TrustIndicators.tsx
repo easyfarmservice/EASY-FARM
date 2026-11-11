@@ -16,7 +16,7 @@ const DEFAULT_INDICATORS = [
   },
   {
     title: 'Guaranteed Sunday Morning Delivery',
-    description: 'Scheduled weekly deliveries directly to gated communities & homes in Ghatkesar.',
+    description: 'Scheduled weekly deliveries directly to gated communities & homes in Ghatkesar & Pocharam, Hyderabad (Active).',
   },
 ];
 

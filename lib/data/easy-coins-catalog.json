@@ -78,15 +78,16 @@
       "package_size": "100g Tube",
       "image_url": "/images/rewards/dabur-red.jpg",
       "coin_cost": 40,
-      "stock_quantity": 50,
+      "stock_quantity": 49,
       "cost_price_inr": 42,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-2",
@@ -102,12 +103,13 @@
       "stock_quantity": 50,
       "cost_price_inr": 44,
       "supplier_name": "Wholesale Depot",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-3",
@@ -123,12 +125,13 @@
       "stock_quantity": 60,
       "cost_price_inr": 24,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 3,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-4",
@@ -144,12 +147,13 @@
       "stock_quantity": 45,
       "cost_price_inr": 48,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-5",
@@ -162,15 +166,16 @@
       "package_size": "80ml Bottle",
       "image_url": "/images/rewards/dabur-red.jpg",
       "coin_cost": 50,
-      "stock_quantity": 0,
+      "stock_quantity": 50,
       "cost_price_inr": 52,
       "supplier_name": "Healthcare Wholesaler",
       "is_active": false,
       "is_archived": false,
-      "availability_status": "out_of_stock",
+      "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-6",
@@ -186,12 +191,13 @@
       "stock_quantity": 40,
       "cost_price_inr": 54,
       "supplier_name": "Unilever Dist",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-7",
@@ -207,12 +213,13 @@
       "stock_quantity": 75,
       "cost_price_inr": 32,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 3,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-8",
@@ -228,12 +235,13 @@
       "stock_quantity": 50,
       "cost_price_inr": 36,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-9",
@@ -254,7 +262,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-10",
@@ -275,7 +284,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-11",
@@ -291,12 +301,13 @@
       "stock_quantity": 55,
       "cost_price_inr": 46,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-12",
@@ -317,7 +328,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-13",
@@ -338,7 +350,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-14",
@@ -359,7 +372,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-15",
@@ -380,7 +394,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-16",
@@ -396,12 +411,13 @@
       "stock_quantity": 60,
       "cost_price_inr": 28,
       "supplier_name": "Telangana Handicrafts",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-17",
@@ -417,12 +433,13 @@
       "stock_quantity": 90,
       "cost_price_inr": 22,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 4,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-18",
@@ -443,7 +460,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-19",
@@ -459,12 +477,13 @@
       "stock_quantity": 70,
       "cost_price_inr": 35,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 3,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-20",
@@ -485,7 +504,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-21",
@@ -506,7 +526,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-22",
@@ -522,12 +543,13 @@
       "stock_quantity": 45,
       "cost_price_inr": 70,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-23",
@@ -548,7 +570,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-24",
@@ -569,7 +592,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-25",
@@ -585,12 +609,13 @@
       "stock_quantity": 80,
       "cost_price_inr": 48,
       "supplier_name": "Local Artisan Guild",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-26",
@@ -603,15 +628,16 @@
       "package_size": "Pack of 2",
       "image_url": "/images/rewards/kitchen-wipes.jpg",
       "coin_cost": 40,
-      "stock_quantity": 65,
+      "stock_quantity": 64,
       "cost_price_inr": 38,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-27",
@@ -632,7 +658,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-28",
@@ -653,7 +680,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-29",
@@ -674,7 +702,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-30",
@@ -690,12 +719,13 @@
       "stock_quantity": 80,
       "cost_price_inr": 24,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 3,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-31",
@@ -716,7 +746,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-32",
@@ -737,7 +768,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 3,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-33",
@@ -753,12 +785,13 @@
       "stock_quantity": 40,
       "cost_price_inr": 45,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-34",
@@ -779,7 +812,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-35",
@@ -800,7 +834,8 @@
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-36",
@@ -816,12 +851,13 @@
       "stock_quantity": 50,
       "cost_price_inr": 44,
       "supplier_name": "Direct Wholesale",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 2,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-37",
@@ -841,12 +877,13 @@
       "stock_quantity": 30,
       "cost_price_inr": 75,
       "supplier_name": "In-house Packaged",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 1,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-38",
@@ -866,12 +903,13 @@
       "stock_quantity": 30,
       "cost_price_inr": 58,
       "supplier_name": "In-house Packaged",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 1,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-39",
@@ -891,12 +929,13 @@
       "stock_quantity": 35,
       "cost_price_inr": 55,
       "supplier_name": "In-house Packaged",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 1,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     },
     {
       "id": "rew-40",
@@ -917,13 +956,214 @@
       "stock_quantity": 20,
       "cost_price_inr": 120,
       "supplier_name": "In-house Packaged",
-      "is_active": true,
+      "is_active": false,
       "is_archived": false,
       "availability_status": "available",
       "max_claims_per_customer": 1,
       "max_claims_per_order": 1,
-      "min_order_value": 0
+      "min_order_value": 0,
+      "updated_at": "2026-11-11T16:30:57.424Z"
     }
   ],
-  "updated_at": "2026-10-26T09:15:58.083Z"
+  "ledger": [
+    {
+      "id": "led-welcome-401e948a-3570-4524-91fb-4ad3703e3727",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "amount": 150,
+      "balance_after": 150,
+      "transaction_type": "bonus_promo",
+      "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
+      "reference_id": "welcome_gift",
+      "created_at": "2026-11-11T15:43:39.626Z"
+    },
+    {
+      "id": "led-welcome-guest-customer-default",
+      "customer_id": "guest-customer-default",
+      "amount": 150,
+      "balance_after": 150,
+      "transaction_type": "bonus_promo",
+      "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
+      "reference_id": "welcome_gift",
+      "created_at": "2026-11-11T16:16:03.797Z"
+    },
+    {
+      "id": "led-1794414666712-sd2kd",
+      "customer_id": "b97d3469-a45d-4c09-9d53-cd7ff61d81ad",
+      "order_id": "ORD-663688161",
+      "amount": -40,
+      "balance_after": 110,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed Dabur Red Ayurvedic Toothpaste (100g Tube) with order #688161",
+      "reference_id": "reward_claim_debit_ORD-663688161_rew-1",
+      "created_at": "2026-11-11T16:31:06.712Z"
+    },
+    {
+      "id": "led-1794414666712-sd2kd-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-663688161",
+      "amount": -40,
+      "balance_after": 110,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed Dabur Red Ayurvedic Toothpaste (100g Tube) with order #688161",
+      "reference_id": "reward_claim_debit_ORD-663688161_rew-1",
+      "created_at": "2026-11-11T16:31:06.712Z"
+    },
+    {
+      "id": "led-1794414666898-6vxih",
+      "customer_id": "b97d3469-a45d-4c09-9d53-cd7ff61d81ad",
+      "order_id": "ORD-663688161",
+      "amount": -50,
+      "balance_after": 60,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed 50 Easy Coins for ₹5.00 basket purchase discount (10 Coins = ₹1)",
+      "reference_id": "coins_discount_ORD-663688161",
+      "created_at": "2026-11-11T16:31:06.898Z"
+    },
+    {
+      "id": "led-1794414666898-6vxih-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-663688161",
+      "amount": -50,
+      "balance_after": 60,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed 50 Easy Coins for ₹5.00 basket purchase discount (10 Coins = ₹1)",
+      "reference_id": "coins_discount_ORD-663688161",
+      "created_at": "2026-11-11T16:31:06.898Z"
+    },
+    {
+      "id": "led-1794414667462-ahb62",
+      "customer_id": "b97d3469-a45d-4c09-9d53-cd7ff61d81ad",
+      "order_id": "ORD-663688161",
+      "amount": 17,
+      "balance_after": 77,
+      "transaction_type": "earned_order",
+      "description": "Earned +17 Easy Coins for basket purchase #688161 (₹175)",
+      "reference_id": "earned_order_ORD-663688161",
+      "created_at": "2026-11-11T16:31:07.462Z"
+    },
+    {
+      "id": "led-1794414667462-ahb62-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-663688161",
+      "amount": 17,
+      "balance_after": 77,
+      "transaction_type": "earned_order",
+      "description": "Earned +17 Easy Coins for basket purchase #688161 (₹175)",
+      "reference_id": "earned_order_ORD-663688161",
+      "created_at": "2026-11-11T16:31:07.462Z"
+    },
+    {
+      "id": "led-1794415921991-gugtx",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "order_id": "ORD-920597278",
+      "amount": -10,
+      "balance_after": 140,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed 10 Easy Coins for ₹1.00 basket purchase discount (10 Coins = ₹1)",
+      "reference_id": "coins_discount_ORD-920597278",
+      "created_at": "2026-11-11T16:52:01.991Z"
+    },
+    {
+      "id": "led-1794415921991-gugtx-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-920597278",
+      "amount": -10,
+      "balance_after": 140,
+      "transaction_type": "redeemed_reward",
+      "description": "Redeemed 10 Easy Coins for ₹1.00 basket purchase discount (10 Coins = ₹1)",
+      "reference_id": "coins_discount_ORD-920597278",
+      "created_at": "2026-11-11T16:52:01.991Z"
+    },
+    {
+      "id": "led-1794415922668-rx1ml",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "order_id": "ORD-920597278",
+      "amount": 17,
+      "balance_after": 157,
+      "transaction_type": "earned_order",
+      "description": "Earned +17 Easy Coins for basket purchase #597278 (₹175)",
+      "reference_id": "earned_order_ORD-920597278",
+      "created_at": "2026-11-11T16:52:02.668Z"
+    },
+    {
+      "id": "led-1794415922668-rx1ml-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-920597278",
+      "amount": 17,
+      "balance_after": 157,
+      "transaction_type": "earned_order",
+      "description": "Earned +17 Easy Coins for basket purchase #597278 (₹175)",
+      "reference_id": "earned_order_ORD-920597278",
+      "created_at": "2026-11-11T16:52:02.668Z"
+    },
+    {
+      "id": "led-1794418357846-wk9js",
+      "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
+      "order_id": "ORD-355864407",
+      "amount": 20,
+      "balance_after": 177,
+      "transaction_type": "earned_order",
+      "description": "Earned +20 Easy Coins for basket purchase #864407 (₹200)",
+      "reference_id": "earned_order_ORD-355864407",
+      "created_at": "2026-11-11T17:32:37.846Z"
+    },
+    {
+      "id": "led-1794418357846-wk9js-guest",
+      "customer_id": "guest-customer-default",
+      "order_id": "ORD-355864407",
+      "amount": 20,
+      "balance_after": 177,
+      "transaction_type": "earned_order",
+      "description": "Earned +20 Easy Coins for basket purchase #864407 (₹200)",
+      "reference_id": "earned_order_ORD-355864407",
+      "created_at": "2026-11-11T17:32:37.846Z"
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim-1794414665088-lvs2o",
+      "order_id": "ORD-663688161",
+      "customer_id": "b97d3469-a45d-4c09-9d53-cd7ff61d81ad",
+      "reward_product_id": "rew-1",
+      "reward_name_snapshot": "Dabur Red Ayurvedic Toothpaste",
+      "brand_snapshot": "Dabur",
+      "package_size_snapshot": "100g Tube",
+      "image_url_snapshot": "/images/rewards/dabur-red.jpg",
+      "coin_cost_snapshot": 40,
+      "quantity": 1,
+      "claim_status": "reserved",
+      "reserved_at": "2026-11-11T16:31:04.963Z",
+      "created_at": "2026-11-11T16:31:04.963Z",
+      "notes": "ORD-663688161",
+      "name": "Dabur Red Ayurvedic Toothpaste",
+      "brand": "Dabur",
+      "package_size": "100g Tube",
+      "coin_cost": 40,
+      "total_coins": 40,
+      "image_url": "/images/rewards/dabur-red.jpg"
+    },
+    {
+      "id": "claim-1794414665088-lvs2o-guest",
+      "order_id": "ORD-663688161",
+      "customer_id": "guest-customer-default",
+      "reward_product_id": "rew-1",
+      "reward_name_snapshot": "Dabur Red Ayurvedic Toothpaste",
+      "brand_snapshot": "Dabur",
+      "package_size_snapshot": "100g Tube",
+      "image_url_snapshot": "/images/rewards/dabur-red.jpg",
+      "coin_cost_snapshot": 40,
+      "quantity": 1,
+      "claim_status": "reserved",
+      "reserved_at": "2026-11-11T16:31:04.963Z",
+      "created_at": "2026-11-11T16:31:04.963Z",
+      "notes": "ORD-663688161",
+      "name": "Dabur Red Ayurvedic Toothpaste",
+      "brand": "Dabur",
+      "package_size": "100g Tube",
+      "coin_cost": 40,
+      "total_coins": 40,
+      "image_url": "/images/rewards/dabur-red.jpg"
+    }
+  ],
+  "updated_at": "2026-11-11T17:32:38.124Z"
 }

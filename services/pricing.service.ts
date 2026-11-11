@@ -7,6 +7,7 @@ export interface CalculationItem {
   quantity: number;
   customPrice?: number;
   compareAtPrice?: number;
+  customizedItems?: Array<any>;
 }
 
 export interface CalculationResult {
@@ -43,6 +44,7 @@ export class PricingService {
     orderCutoffTime: string;
     deliveryDay: string;
     deliveryPromise: string;
+    isDeliveryFree: boolean;
   }> {
     const defaults = {
       baseDeliveryFee: 40,
@@ -53,6 +55,7 @@ export class PricingService {
       orderCutoffTime: '23:00',
       deliveryDay: 'Sunday',
       deliveryPromise: 'Sunday by 6 PM',
+      isDeliveryFree: false,
     };
 
     try {
@@ -66,8 +69,14 @@ export class PricingService {
         settingsMap[row.key] = row.value;
       });
 
+      const isDeliveryFree = Boolean(
+        settingsMap.is_delivery_free === true ||
+        settingsMap.is_delivery_free === 'true' ||
+        Number(settingsMap.base_delivery_fee) === 0
+      );
+
       return {
-        baseDeliveryFee: Number(settingsMap.base_delivery_fee ?? defaults.baseDeliveryFee),
+        baseDeliveryFee: isDeliveryFree ? 0 : Number(settingsMap.base_delivery_fee ?? defaults.baseDeliveryFee),
         freeDeliveryThreshold: Number(settingsMap.free_delivery_threshold ?? defaults.freeDeliveryThreshold),
         minimumOrderValue: Number(settingsMap.minimum_order_value ?? defaults.minimumOrderValue),
         allowCouponStacking: Boolean(settingsMap.allow_coupon_stacking ?? defaults.allowCouponStacking),
@@ -75,6 +84,7 @@ export class PricingService {
         orderCutoffTime: String(settingsMap.order_cutoff_time ?? defaults.orderCutoffTime).replace(/"/g, ''),
         deliveryDay: String(settingsMap.delivery_day ?? defaults.deliveryDay).replace(/"/g, ''),
         deliveryPromise: String(settingsMap.delivery_promise ?? defaults.deliveryPromise).replace(/"/g, ''),
+        isDeliveryFree,
       };
     } catch {
       return defaults;
@@ -187,10 +197,79 @@ export class PricingService {
       }
 
       const name = dbBasket.name;
-      // If customer customized basket with swaps, use recalculated item.customPrice; else authoritative basket price
-      const unitPrice = typeof item.customPrice === 'number' && item.customPrice > 0
-        ? item.customPrice
-        : Number(dbBasket.price || 0);
+      const isCustomBox = Boolean(dbBasket.slug?.includes('custom') || dbBasket.id.endsWith('4'));
+      const authoritativeBasketPrice = Number(dbBasket.price || 185);
+
+      if (isCustomBox && Array.isArray(item.customizedItems) && item.customizedItems.length < 4) {
+        return {
+          valid: false,
+          message: `Minimum 4 items are required in Custom Box (currently ${item.customizedItems.length} selected).`,
+          itemsBreakdown: [],
+          subtotal: 0,
+          savingsFromCompareAt: 0,
+          couponDiscount: 0,
+          deliveryFee: settings.baseDeliveryFee,
+          freeDeliveryThreshold: settings.freeDeliveryThreshold,
+          isFreeDelivery: false,
+          totalPayable: 0,
+        };
+      }
+
+      let unitPrice = authoritativeBasketPrice;
+      if (Array.isArray(item.customizedItems) && item.customizedItems.length > 0) {
+        const allProducts = await UnifiedBasketService.getAllProducts();
+        const prodMap = new Map<string, any>();
+        allProducts.forEach((p) => {
+          prodMap.set(p.id, p);
+          if (p.slug) prodMap.set(p.slug, p);
+          prodMap.set(p.name.toLowerCase(), p);
+        });
+
+        let serverVerifiedCustomSum = 0;
+        for (const sub of item.customizedItems) {
+          const matchedProd =
+            prodMap.get(sub.productId || sub.id) ||
+            prodMap.get(String(sub.productName || sub.name || '').toLowerCase());
+          const subQty = Math.max(1, Number(sub.quantity) || 1);
+          if (matchedProd) {
+            // Verify client sub-item price is not tampered below authoritative catalog rate
+            const uStr = String(sub.unit || matchedProd.unit || 'kg').toLowerCase().trim();
+            let multiplier = 1;
+            if (uStr === '100 g' || uStr === '100g') multiplier = 0.1;
+            else if (uStr === '200 g' || uStr === '200g') multiplier = 0.2;
+            else if (uStr === '250 g' || uStr === '250g') multiplier = 0.25;
+            else if (uStr === '500 g' || uStr === '500g') multiplier = 0.5;
+            else if (uStr === '1.5 kg' || uStr === '1.5kg') multiplier = 1.5;
+            else if (uStr === '2 kg' || uStr === '2kg' || uStr === '2 bunches' || uStr === '2 pcs') multiplier = 2;
+            else if (uStr === '3 kg' || uStr === '3kg' || uStr === '3 bunches' || uStr === '3 pcs') multiplier = 3;
+            else if (uStr === '4 bunches' || uStr === '4 pcs') multiplier = 4;
+            else if (uStr === '5 kg' || uStr === '5kg' || uStr === '5 bunches') multiplier = 5;
+            else if (uStr === '6 pcs') multiplier = 6;
+
+            const baseCatalogUnit = String(matchedProd.unit || 'kg').toLowerCase();
+            const isBaseAlreadySubUnit =
+              baseCatalogUnit.includes('500') ||
+              baseCatalogUnit.includes('250') ||
+              baseCatalogUnit.includes('200') ||
+              baseCatalogUnit.includes('2 bunch') ||
+              baseCatalogUnit.includes('2 pc');
+
+            const expectedMinPrice = isBaseAlreadySubUnit
+              ? Math.max(1, Math.round(Number(matchedProd.price) * Math.min(1, multiplier)))
+              : Math.max(1, Math.round(Number(matchedProd.price) * multiplier));
+            const clientSubPrice = Number(sub.price || 0);
+            const verifiedSubPrice = clientSubPrice >= expectedMinPrice ? clientSubPrice : expectedMinPrice;
+            serverVerifiedCustomSum += isCustomBox ? verifiedSubPrice * subQty : verifiedSubPrice;
+          } else {
+            serverVerifiedCustomSum += Math.max(15, Number(sub.price || 35)) * (isCustomBox ? subQty : 1);
+          }
+        }
+        unitPrice = Math.max(serverVerifiedCustomSum, typeof item.customPrice === 'number' ? item.customPrice : 0);
+      } else if (typeof item.customPrice === 'number' && item.customPrice > 0) {
+        // Without customizedItems breakdown, allow customPrice for Custom Box or >= 75% of fixed basket price
+        const minAllowedPrice = isCustomBox ? 1 : Math.round(authoritativeBasketPrice * 0.75);
+        unitPrice = item.customPrice >= minAllowedPrice ? item.customPrice : authoritativeBasketPrice;
+      }
 
       const compareAt = typeof item.compareAtPrice === 'number' && item.compareAtPrice > 0
         ? item.compareAtPrice
@@ -221,46 +300,12 @@ export class PricingService {
       cleanCouponCode === 'RUPEE1' ||
       cleanCouponCode === 'ONE';
 
-    // Enforce minimum order value (bypassed for ₹1 testing coupons)
-    if (!isOneRupeeTestCoupon && subtotal < settings.minimumOrderValue) {
-      return {
-        valid: false,
-        message: `Minimum order value is ₹${settings.minimumOrderValue}. Current order subtotal is ₹${subtotal}`,
-        itemsBreakdown,
-        subtotal,
-        savingsFromCompareAt,
-        couponDiscount: 0,
-        deliveryFee: settings.baseDeliveryFee,
-        freeDeliveryThreshold: settings.freeDeliveryThreshold,
-        isFreeDelivery: false,
-        totalPayable: subtotal + settings.baseDeliveryFee,
-      };
-    }
-
     // 2. Validate Coupon Server-side
     let couponDiscount = 0;
     let validatedCouponCode: string | undefined = undefined;
 
-    if (isOneRupeeTestCoupon) {
-      // Set order payable directly to ₹1.00 for live Razorpay testing
-      couponDiscount = Math.max(0, subtotal - 1);
-      validatedCouponCode = cleanCouponCode;
-      return {
-        valid: true,
-        itemsBreakdown,
-        subtotal,
-        savingsFromCompareAt,
-        couponCode: validatedCouponCode,
-        couponDiscount,
-        deliveryFee: 0,
-        freeDeliveryThreshold: settings.freeDeliveryThreshold,
-        isFreeDelivery: true,
-        totalPayable: 1,
-      };
-    }
-
     if (cleanCouponCode) {
-      // Check DB Coupons
+      // 2a. Check live DB Coupons first (authoritative admin configuration)
       const { data: dbCoupon } = await supabase
         .from('coupons')
         .select('*')
@@ -300,13 +345,28 @@ export class PricingService {
           couponDiscount = Math.min(couponDiscount, subtotal);
           validatedCouponCode = dbCoupon.code;
         }
+      } else if (isOneRupeeTestCoupon) {
+        // 2b. Built-in ₹1 live testing coupons (bypasses delivery fee, forces total to ₹1)
+        couponDiscount = Math.max(0, subtotal - 1);
+        validatedCouponCode = cleanCouponCode;
+        return {
+          valid: true,
+          itemsBreakdown,
+          subtotal,
+          savingsFromCompareAt,
+          couponCode: validatedCouponCode,
+          couponDiscount,
+          deliveryFee: 0,
+          freeDeliveryThreshold: settings.freeDeliveryThreshold,
+          isFreeDelivery: true,
+          totalPayable: 1,
+        };
       } else {
-        // Built-in launch coupons fallback
+        // 2c. Built-in launch coupons fallback
         const hardcodedCoupons: Record<string, { value: number; type: 'flat' | 'percent'; minOrder: number }> = {
           EASY50: { value: 50, type: 'flat', minOrder: 100 },
           FIRSTFARM: { value: 10, type: 'percent', minOrder: 100 },
           GHATKESAR100: { value: 100, type: 'flat', minOrder: 250 },
-          GACHIBOWLI100: { value: 100, type: 'flat', minOrder: 250 },
           WELCOME20: { value: 20, type: 'percent', minOrder: 150 },
         };
 
@@ -320,7 +380,7 @@ export class PricingService {
     }
 
     // 3. Calculate Delivery Fee
-    const isFreeDelivery = subtotal >= settings.freeDeliveryThreshold;
+    const isFreeDelivery = settings.isDeliveryFree || settings.baseDeliveryFee === 0 || subtotal >= settings.freeDeliveryThreshold;
     const deliveryFee = isFreeDelivery ? 0 : settings.baseDeliveryFee;
     const totalPayable = Math.max(0, subtotal - couponDiscount + deliveryFee);
 
