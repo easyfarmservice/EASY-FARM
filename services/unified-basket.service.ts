@@ -68,14 +68,14 @@ export const EASY_FARM_BASKETS = [
     name: 'Custom Basket',
     slug: 'custom-basket',
     description: 'Build your own basket from scratch. No 3-item limit, pick whatever you like from harvest.',
-    price: 450,
-    cost_price: 320,
+    price: 0,
+    cost_price: 0,
     packing_cost: 25,
     target_margin_pct: 25,
     pricing_mode: 'automatic' as const,
     is_customizable: true,
     max_swaps: 99,
-    items_count: 5,
+    items_count: 4,
     sort_order: 4,
     active: true,
   },
@@ -141,40 +141,9 @@ export class UnifiedBasketService {
           eligible_baskets: p.eligible_baskets || ['staple-basket', 'green-basket', 'special-basket', 'custom-basket'],
         }));
 
-        // Merge with persisted or default 24 crops so all 24 crops are available and retain their active status & admin price edits
-        const baseList = persisted && persisted.length > 0 ? persisted : this.getDefaultProducts();
-        const mergedMap = new Map<string, Product>();
-        for (const item of baseList) {
-          mergedMap.set(item.id, item);
-        }
-        for (const dbItem of dbList) {
-          const existingBySlug = Array.from(mergedMap.values()).find(
-            (x) => x.id === dbItem.id || (x.slug && x.slug === dbItem.slug)
-          );
-          if (existingBySlug) {
-            const persistedMatch = persisted?.find(
-              (p) => p.id === existingBySlug.id || p.id === dbItem.id || (p.slug && p.slug === dbItem.slug)
-            );
-            const persistedTime = persistedMatch?.updated_at ? new Date(persistedMatch.updated_at).getTime() : 0;
-            const dbTime = dbItem.updated_at ? new Date(dbItem.updated_at).getTime() : 0;
-            const preferPersisted = Boolean(persistedMatch && persistedTime >= dbTime);
-
-            mergedMap.set(existingBySlug.id, {
-              ...existingBySlug,
-              ...dbItem,
-              ...(preferPersisted ? persistedMatch : {}),
-              id: existingBySlug.id,
-              active: persistedMatch !== undefined ? persistedMatch.active : dbItem.active,
-            });
-          } else {
-            mergedMap.set(dbItem.id, dbItem);
-          }
-        }
-        const finalProducts = Array.from(mergedMap.values());
-        if (!persisted) {
-          savePersistedMasterProducts(finalProducts);
-        }
-        return finalProducts;
+        // Always sync the master-products.json file to disk so cache matches DB exactly
+        savePersistedMasterProducts(dbList);
+        return dbList;
       }
     } catch {
       // Fallback
@@ -233,7 +202,14 @@ export class UnifiedBasketService {
    */
   static async getAllBasketsWithPricing(): Promise<Array<{ basket: Basket; pricing: BasketPricingSummary }>> {
     const products = await this.getAllProducts();
-    const productsMap = new Map(products.map((p) => [p.id, p]));
+    const productsMap = new Map<string, Product>();
+    for (const p of products) {
+      productsMap.set(p.id, p);
+      if (p.slug) {
+        productsMap.set(p.slug, p);
+        productsMap.set(`p-${p.slug}`, p);
+      }
+    }
 
     let dbBaskets: Basket[] = [];
     try {
@@ -289,7 +265,7 @@ export class UnifiedBasketService {
       const isCustom = basket.id.endsWith('4') || basket.slug.includes('custom');
       let items = fallbackBasketItemsStore.get(basket.id);
       if (!items || items.length === 0) {
-        if (!isCustom && basket.items && basket.items.length >= 8 && basket.items.some((i: any) => i.product || i.product_id)) {
+        if (!isCustom && basket.items && basket.items.length > 0 && basket.items.some((i: any) => i.product || i.product_id)) {
           items = basket.items;
         } else {
           items = this.getDefaultBasketItems(basket.id, products);
@@ -338,13 +314,18 @@ export class UnifiedBasketService {
         0
       );
 
-      const savedPrice = fallbackBasketPricesStore.get(basket.id);
-      if (savedPrice) {
-        basket.price = savedPrice.price;
-        basket.compare_at_price = savedPrice.compare_at_price;
+      if (isCustom) {
+        basket.price = 0;
+        basket.compare_at_price = 0;
       } else {
-        basket.price = calculatedDailyPrice;
-        basket.compare_at_price = calculatedComparePrice > 0 ? calculatedComparePrice : Math.round(calculatedDailyPrice * 1.25);
+        const savedPrice = fallbackBasketPricesStore.get(basket.id);
+        if (savedPrice) {
+          basket.price = savedPrice.price;
+          basket.compare_at_price = savedPrice.compare_at_price;
+        } else {
+          basket.price = calculatedDailyPrice;
+          basket.compare_at_price = calculatedComparePrice > 0 ? calculatedComparePrice : Math.round(calculatedDailyPrice * 1.25);
+        }
       }
 
       const pricingInputs: ItemPricingInput[] = items.map((bi: any) => {
@@ -749,36 +730,52 @@ export class UnifiedBasketService {
     ids: string[],
     active: boolean
   ): Promise<{ success: boolean; updatedCount: number; products: Product[] }> {
-    const currentList = await this.getAllProducts();
-    const idSet = new Set(ids);
     const nowIso = new Date().toISOString();
     let updatedCount = 0;
 
+    const supabase = createAdminClient();
+    try {
+      if (ids.includes('ALL')) {
+        const { error } = await supabase
+          .from('products')
+          .update({ active, updated_at: nowIso })
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) console.error('[bulkUpdateProductsStatus] ALL update error:', error);
+      } else if (ids.length > 0) {
+        // Support updating by ID or slug if ID is prefixed
+        const uuidIds = ids.filter((id) => !id.startsWith('p-'));
+        const slugIds = ids.filter((id) => id.startsWith('p-')).map((id) => id.replace(/^p-/, ''));
+
+        if (uuidIds.length > 0) {
+          const { error } = await supabase
+            .from('products')
+            .update({ active, updated_at: nowIso })
+            .in('id', uuidIds);
+          if (error) console.error('[bulkUpdateProductsStatus] uuid update error:', error);
+        }
+        if (slugIds.length > 0) {
+          const { error } = await supabase
+            .from('products')
+            .update({ active, updated_at: nowIso })
+            .in('slug', slugIds);
+          if (error) console.error('[bulkUpdateProductsStatus] slug update error:', error);
+        }
+      }
+    } catch (err) {
+      console.error('[bulkUpdateProductsStatus] Exception:', err);
+    }
+
+    // Refresh from DB directly so disk and cache are immediately in sync
+    const currentList = await this.getAllProducts();
+    const idSet = new Set(ids);
     for (const prod of currentList) {
-      if (idSet.has(prod.id) || ids.includes('ALL')) {
+      if (idSet.has(prod.id) || ids.includes('ALL') || idSet.has(`p-${prod.slug}`)) {
         prod.active = active;
         prod.updated_at = nowIso;
         updatedCount++;
       }
     }
-
     savePersistedMasterProducts(currentList);
-
-    try {
-      const supabase = createAdminClient();
-      const uuidIds = ids.filter((id) => !id.startsWith('p-') && id !== 'ALL');
-      if (ids.includes('ALL')) {
-        await supabase
-          .from('products')
-          .update({ active, updated_at: nowIso })
-          .neq('id', '00000000-0000-0000-0000-000000000000');
-      } else if (uuidIds.length > 0) {
-        await supabase
-          .from('products')
-          .update({ active, updated_at: nowIso })
-          .in('id', uuidIds);
-      }
-    } catch {}
 
     return {
       success: true,
@@ -791,16 +788,37 @@ export class UnifiedBasketService {
    * Deletes a product from master catalog
    */
   static async deleteMasterProduct(id: string): Promise<{ success: boolean }> {
-    const currentList = await this.getAllProducts();
-    const filtered = currentList.filter((p) => p.id !== id);
-    savePersistedMasterProducts(filtered);
-
     try {
-      if (!id.startsWith('p-')) {
-        const supabase = createAdminClient();
-        await supabase.from('products').delete().eq('id', id);
+      const supabase = createAdminClient();
+      const isSlug = id.startsWith('p-');
+      const slugVal = isSlug ? id.replace(/^p-/, '') : null;
+
+      // First find the UUID if we were given a slug ID
+      let targetId = id;
+      if (isSlug && slugVal) {
+        const { data: found } = await supabase.from('products').select('id').eq('slug', slugVal).maybeSingle();
+        if (found?.id) targetId = found.id;
       }
-    } catch {}
+
+      // Remove dependent records in basket_items & weekly_basket_items
+      await supabase.from('basket_items').delete().eq('product_id', targetId);
+      await supabase.from('weekly_basket_items').delete().eq('product_id', targetId);
+
+      // Now delete product by id (and slug if available)
+      const { error: errId } = await supabase.from('products').delete().eq('id', targetId);
+      if (errId) {
+        console.error('[deleteMasterProduct] DB error by id:', errId);
+        if (slugVal) {
+          await supabase.from('products').delete().eq('slug', slugVal);
+        }
+      }
+    } catch (err) {
+      console.error('[deleteMasterProduct] Error deleting from DB:', err);
+    }
+
+    const currentList = await this.getAllProducts();
+    const filtered = currentList.filter((p) => p.id !== id && `p-${p.slug}` !== id && p.slug !== id.replace(/^p-/, ''));
+    savePersistedMasterProducts(filtered);
 
     return { success: true };
   }
@@ -842,7 +860,14 @@ export class UnifiedBasketService {
 
     const allBaskets = await this.getAllBasketsWithPricing();
     const products = await this.getAllProducts();
-    const productsMap = new Map(products.map((p) => [p.id, p]));
+    const productsMap = new Map<string, Product>();
+    for (const p of products) {
+      productsMap.set(p.id, p);
+      if (p.slug) {
+        productsMap.set(p.slug, p);
+        productsMap.set(`p-${p.slug}`, p);
+      }
+    }
 
     const weeklyBasketsResult = [];
 
@@ -910,7 +935,14 @@ export class UnifiedBasketService {
     status: 'draft' | 'published' = 'published'
   ): Promise<{ success: boolean; message: string }> {
     const products = await this.getAllProducts();
-    const productsMap = new Map(products.map((p) => [p.id, p]));
+    const productsMap = new Map<string, Product>();
+    for (const p of products) {
+      productsMap.set(p.id, p);
+      if (p.slug) {
+        productsMap.set(p.slug, p);
+        productsMap.set(`p-${p.slug}`, p);
+      }
+    }
 
     // Validation: If publishing a fixed basket, exactly 5 items required
     const isCustomBasket = basketId.endsWith('4') || basketId.includes('custom');
@@ -1066,56 +1098,24 @@ export class UnifiedBasketService {
       };
     });
 
-    // Complete eligible alternatives based on basket configuration:
-    // - Custom Basket: COMPLETE catalogue of all active products in harvest
-    // - Fixed Baskets: Permitted alternatives configured in Admin Panel / DB
-    let eligibleAlternatives: any[] = [];
-    if (isCustomBasket) {
-      eligibleAlternatives = allProducts.filter((p) => p.active !== false).map((p) => {
-        return {
-          id: p.id,
-          name: p.name,
-          price: Number(p.price || 35),
-          compare_at_price: p.market_price && p.market_price > 0 ? Number(p.market_price) : null,
-          unit: p.unit || 'kg',
-          quantity: 1,
-          image_url: p.image_url || '/images/hero-vegetables.png',
-          active: true,
-          market_source: p.market_source || 'Telangana Rythu Bazaar',
-          market_updated_at: p.market_updated_at || null,
-        };
-      });
-    } else {
-      eligibleAlternatives = basketSwapItems;
-      // If basketSwapItems is empty in DB, load active products permitted for this basket
-      if (eligibleAlternatives.length === 0) {
-        const defaultIds = new Set(defaultItems.map((d) => d.productId));
-        const matchedSlug = currentBasketObj.slug?.toLowerCase() || '';
-        eligibleAlternatives = allProducts
-          .filter((p) => {
-            if (p.active === false || defaultIds.has(p.id)) return false;
-            const eligible = (p.eligible_baskets || []).map((s: string) => s.toLowerCase());
-            return (
-              eligible.includes(matchedSlug) ||
-              eligible.includes('staple-box') ||
-              eligible.includes('staple-basket') ||
-              eligible.includes('staple')
-            );
-          })
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            price: Number(p.price || 35),
-            compare_at_price: p.market_price && p.market_price > 0 ? Number(p.market_price) : null,
-            unit: p.unit || 'kg',
-            quantity: 1,
-            image_url: p.image_url || '/images/hero-vegetables.png',
-            active: true,
-            market_source: p.market_source || 'Telangana Rythu Bazaar',
-            market_updated_at: p.market_updated_at || null,
-          }));
-      }
-    }
+    // Complete eligible alternatives:
+    // Add ALL active products from harvest catalogue so customers can freely customize according to their wish!
+    const defaultIds = new Set(defaultItems.map((d) => d.productId));
+    const eligibleAlternatives: any[] = allProducts
+      .filter((p) => p.active !== false && !defaultIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        price: Number(p.price || 35),
+        compare_at_price: p.market_price && p.market_price > 0 ? Number(p.market_price) : Math.round(Number(p.price || 35) * 1.25),
+        unit: p.unit || 'kg',
+        quantity: 1,
+        image_url: p.image_url || '/images/hero-vegetables.png',
+        active: true,
+        market_source: p.market_source || 'Telangana Rythu Bazaar',
+        market_updated_at: p.market_updated_at || null,
+      }));
 
     // Check if customer already saved customization
     let savedCustomization = null;
@@ -1126,7 +1126,7 @@ export class UnifiedBasketService {
 
     const activeItems = savedCustomization ? savedCustomization.items : defaultItems;
     const swapsUsed = savedCustomization ? savedCustomization.swapsUsed : 0;
-    const maxSwaps = isCustomBasket ? 99 : 3;
+    const maxSwaps = isCustomBasket ? 99 : 5;
 
     const baseDailyPrice = defaultItems.reduce((acc, it) => acc + Number(it.price || 0), 0);
     const baseComparePrice = defaultItems.reduce((acc, it) => acc + (it.compare_at_price ? Number(it.compare_at_price) : 0), 0);

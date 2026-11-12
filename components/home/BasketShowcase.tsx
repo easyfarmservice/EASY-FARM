@@ -40,8 +40,8 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
       name: 'Custom Box',
       slug: 'custom-basket',
       description: 'Handpick your preferred vegetables and custom quantities from our full 24-crop Telangana harvest catalogue.',
-      price: 450,
-      compare_at_price: 580,
+      price: 0,
+      compare_at_price: 0,
       image_url: '/images/custom-box-veggies.jpg',
       active: true,
       sort_order: 2,
@@ -93,8 +93,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 max-w-5xl mx-auto items-stretch">
           {displayBaskets.map((b) => {
             const isCustom = b.slug?.includes('custom') || b.id.endsWith('4');
-            const detailHref = `/baskets/${b.slug || b.id}`;
-            const customizeHref = isCustom ? `/baskets/${b.slug || b.id}` : `/baskets/${b.slug || b.id}#customize`;
+            const customizeHref = isCustom ? `/select-vegetables#customize` : `/baskets/staple-basket#swapping-section`;
             const allItems = b.items || [];
             const fixedItems = isCustom
               ? allItems.slice(0, 5)
@@ -113,8 +112,8 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                 className="bg-white rounded-3xl border border-emerald-100/80 shadow-md hover:shadow-2xl hover:border-emerald-200 transition-all duration-300 flex flex-col justify-between overflow-hidden group relative"
               >
                 <div>
-                  {/* CARD IMAGE CONTAINER */}
-                  <div className="relative h-64 sm:h-72 w-full bg-emerald-50/50 overflow-hidden">
+                  {/* CARD IMAGE CONTAINER (Clicking redirects directly to customization) */}
+                  <Link href={customizeHref} className="block relative h-64 sm:h-72 w-full bg-emerald-50/50 overflow-hidden cursor-pointer">
                     <Image
                       src={boxImage}
                       alt={b.name}
@@ -142,9 +141,12 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
 
                     {/* PRICE BADGE */}
                     <div className="absolute top-4 right-4 bg-emerald-950/95 backdrop-blur-md text-white px-3.5 py-1.5 rounded-2xl shadow-xl border border-emerald-700/60 flex items-baseline gap-2">
-                      <span className="font-black text-xl text-white">₹{b.price}</span>
-                      {b.compare_at_price && b.compare_at_price > b.price && (
+                      <span className="font-black text-xl text-white">{isCustom ? '₹0' : `₹${b.price}`}</span>
+                      {!isCustom && b.compare_at_price && b.compare_at_price > b.price && (
                         <span className="text-xs line-through text-emerald-300/80 font-medium">₹{b.compare_at_price}</span>
+                      )}
+                      {isCustom && (
+                        <span className="text-[10px] text-emerald-300 font-bold uppercase tracking-wider">Starts at ₹0</span>
                       )}
                     </div>
 
@@ -152,17 +154,17 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                     <div className="absolute bottom-4 left-4 right-4 text-white">
                       <h3 className="text-2xl font-black drop-shadow-sm tracking-tight text-white flex items-center justify-between">
                         <span>{b.name}</span>
-                        {b.compare_at_price && b.compare_at_price > b.price ? (
+                        {!isCustom && b.compare_at_price && b.compare_at_price > b.price ? (
                           <span className="text-[11px] font-black bg-emerald-500 text-slate-950 px-2 py-0.5 rounded-full shadow">
                             Save ₹{b.compare_at_price - b.price}
                           </span>
                         ) : null}
                       </h3>
                     </div>
-                  </div>
+                  </Link>
 
-                  {/* CONTENT BODY */}
-                  <div className="p-6 sm:p-7 space-y-5">
+                  {/* CONTENT BODY (Clicking redirects directly to customization) */}
+                  <Link href={customizeHref} className="block p-6 sm:p-7 space-y-5 cursor-pointer">
                     <p className="text-slate-600 text-sm leading-relaxed min-h-[40px]">
                       {b.description}
                     </p>
@@ -271,14 +273,14 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                         )}
                       </div>
                     )}
-                  </div>
+                  </Link>
                 </div>
 
                 {/* CARD FOOTER ACTIONS */}
                 <div className="p-6 sm:p-7 pt-0 space-y-2.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Link
-                      href={detailHref}
+                      href={customizeHref}
                       className="py-3 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 border border-slate-200"
                     >
                       <Eye className="w-4 h-4 text-slate-600" />
@@ -286,7 +288,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                     </Link>
 
                     <Link
-                      href={detailHref}
+                      href={customizeHref}
                       className="py-3 px-3 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm transition shadow-md flex items-center justify-center gap-1.5"
                     >
                       <span>{isCustom ? 'Build Your Box' : 'Customize Staple Box'}</span>

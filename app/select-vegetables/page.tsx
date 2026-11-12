@@ -27,13 +27,19 @@ export default async function SelectVegetablesPage() {
     name: 'Custom Box',
     slug: 'custom-basket',
     description: 'Build your own box from scratch. Pick whatever you like from our complete local harvest catalogue.',
-    price: 450,
-    compare_at_price: 580,
+    price: 0,
+    compare_at_price: 0,
     image_url: '/images/hero-vegetables.png',
     active: true,
     sort_order: 2,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+  };
+
+  const finalCustomBasket = {
+    ...customBasketObj,
+    price: 0,
+    compare_at_price: 0,
   };
 
   return (
@@ -42,7 +48,7 @@ export default async function SelectVegetablesPage() {
       <main className="flex-1">
         <CustomBoxZeptoView
           products={products}
-          customBasket={customBasketObj as any}
+          customBasket={finalCustomBasket as any}
         />
       </main>
       <Footer />

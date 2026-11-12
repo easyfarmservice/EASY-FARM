@@ -68,12 +68,12 @@ export function Footer({ settings }: { settings?: any } = {}) {
             </h3>
             <ul className="space-y-2.5 text-xs sm:text-sm font-medium">
               <li>
-                <Link href="/baskets/staple-basket" className="hover:text-white transition flex items-center gap-1">
+                <Link href="/baskets/staple-basket#swapping-section" className="hover:text-white transition flex items-center gap-1">
                   <span>Staple Box</span>
                 </Link>
               </li>
               <li>
-                <Link href="/baskets/custom-basket" className="hover:text-white transition flex items-center gap-1">
+                <Link href="/select-vegetables#customize" className="hover:text-white transition flex items-center gap-1">
                   <span>Custom Box</span>
                 </Link>
               </li>

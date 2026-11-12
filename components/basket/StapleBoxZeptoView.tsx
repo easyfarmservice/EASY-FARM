@@ -15,7 +15,7 @@ import {
   RotateCcw,
   AlertCircle
 } from 'lucide-react';
-import { Basket } from '@/types/database';
+import { Basket, Product } from '@/types/database';
 import { useCart } from '@/components/cart/CartProvider';
 import { ReviewBasketDrawer } from '@/components/cart/ReviewBasketDrawer';
 import { getNextDeliveryDate } from '@/lib/constants';
@@ -38,15 +38,28 @@ export interface StapleItem {
 interface StapleBoxZeptoViewProps {
   basket: Basket;
   initialItems?: any[];
+  allProducts?: Product[];
 }
 
-export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewProps) {
-  const { updateCustomizedBasket, totalItems: cartCount } = useCart();
+export function StapleBoxZeptoView({ basket, initialItems, allProducts = [] }: StapleBoxZeptoViewProps) {
+  const { updateCustomizedBasket, totalItems: cartCount, items: cartItems } = useCart();
+
+  const prodMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    (allProducts || []).forEach((p) => {
+      map.set(p.id, p);
+      if (p.slug) {
+        map.set(p.slug, p);
+        map.set(`p-${p.slug}`, p);
+      }
+    });
+    return map;
+  }, [allProducts]);
 
   const parsedInitial = useMemo(() => {
     if (!initialItems || initialItems.length === 0) return [];
-    return initialItems.slice(0, 5).map((it: any) => {
-      const prod = it.product || {};
+    return initialItems.map((it: any) => {
+      const prod = it.product || prodMap.get(it.product_id) || prodMap.get(it.id) || {};
       return {
         id: prod.id || it.product_id || it.id,
         name: prod.name || it.product_name || it.name || 'Seasonal Item',
@@ -58,26 +71,80 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
         active: prod.active !== false,
       };
     });
-  }, [initialItems]);
+  }, [initialItems, prodMap]);
+
+  // Map all active products into alternatives for the swap modal
+  const initialAlternatives = useMemo(() => {
+    if (!allProducts || allProducts.length === 0) return [];
+    const currentIds = new Set(parsedInitial.map((i) => i.id));
+    const currentNames = new Set(parsedInitial.map((i) => (i.name || '').toLowerCase().trim()));
+    return allProducts
+      .filter((p) => p.active !== false && !currentIds.has(p.id) && !currentNames.has((p.name || '').toLowerCase().trim()))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        price: Number(p.price || 35),
+        market_price: Number(p.market_price || Math.round(Number(p.price || 35) * 1.25)),
+        quantity: 1,
+        unit: p.unit || 'kg',
+        image_url: p.image_url || '/images/hero-vegetables.png',
+        active: true,
+      }));
+  }, [allProducts, parsedInitial]);
 
   const [basketDetails, setBasketDetails] = useState<Basket>(basket);
   const [defaultItems, setDefaultItems] = useState<StapleItem[]>(parsedInitial);
   const [currentItems, setCurrentItems] = useState<StapleItem[]>(parsedInitial);
-  const [eligibleAlternatives, setEligibleAlternatives] = useState<StapleItem[]>([]);
+  const [eligibleAlternatives, setEligibleAlternatives] = useState<StapleItem[]>(initialAlternatives);
+
+  // Keep eligibleAlternatives synced whenever allProducts or parsedInitial changes
+  useEffect(() => {
+    if (initialAlternatives.length > 0) {
+      setEligibleAlternatives(initialAlternatives);
+    }
+  }, [initialAlternatives]);
 
   // Swapping modal state
   const [swapModalOpen, setSwapModalOpen] = useState(false);
   const [targetItemIndex, setTargetItemIndex] = useState<number | null>(null);
   const [selectedAltForModal, setSelectedAltForModal] = useState<StapleItem | null>(null);
+  const [altSearchQuery, setAltSearchQuery] = useState('');
 
   // Cart / Review Drawer state
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false);
 
-  // Limits
-  const [maxSwaps, setMaxSwaps] = useState(3);
+  // Limits (allow customizing all 5 items according to customer wish)
+  const [maxSwaps, setMaxSwaps] = useState(5);
   const [swapsUsed, setSwapsUsed] = useState(0);
   const [cutoffPassed, setCutoffPassed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Restore cart selections on mount if staple box already has customized items
+  useEffect(() => {
+    const existingStaple = cartItems.find((ci) => {
+      const b = ci.basket || {};
+      return b.id === basket.id || b.slug?.includes('staple') || b.id?.endsWith('1');
+    });
+
+    if (existingStaple?.customizedItems && existingStaple.customizedItems.length > 0) {
+      const restored = existingStaple.customizedItems.map((it: any) => ({
+        id: it.productId || it.id,
+        name: it.productName || it.name,
+        price: Number(it.price || 35),
+        market_price: Number(it.compare_at_price || Math.round(Number(it.price || 35) * 1.25)),
+        quantity: it.quantity || 1,
+        unit: it.unit || 'kg',
+        image_url: it.image_url || '/images/hero-vegetables.png',
+        active: true,
+        isSwapped: Boolean(it.isSwapped),
+        replacedProductName: it.replacedProductName,
+      }));
+      setCurrentItems(restored);
+      const used = restored.filter((it: any) => it.isSwapped).length;
+      setSwapsUsed(used);
+    }
+  }, [cartItems, basket.id]);
 
   // Dynamic delivery dates
   const [deliveryInfo, setDeliveryInfo] = useState({
@@ -123,13 +190,13 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
               compare_at_price: data.basketComparePrice ?? prev.compare_at_price,
             }));
           }
-          setMaxSwaps(data.maxSwaps ?? 3);
+          setMaxSwaps(data.maxSwaps ?? 5);
           setSwapsUsed(data.swapsUsed ?? 0);
           if (typeof data.isCutoffPassed === 'boolean') {
             setCutoffPassed(data.isCutoffPassed);
           }
 
-          // Default fixed items (5 seasonal staples)
+          // Default fixed items (seasonal staples)
           const defaults: StapleItem[] = (data.defaultItems || []).map((it: any) => ({
             id: it.productId || it.product_id || it.id,
             name: it.productName || it.name,
@@ -144,24 +211,31 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
             setDefaultItems(defaults);
           }
 
-          // Current chosen items
-          const current: StapleItem[] = (data.currentItems || data.defaultItems || []).map((it: any) => ({
-            id: it.productId || it.product_id || it.id,
-            name: it.productName || it.name,
-            price: Number(it.price) || 35,
-            market_price: it.compare_at_price ?? it.market_price ?? Math.round(Number(it.price || 35) * 1.25),
-            quantity: it.quantity || 1,
-            unit: it.unit || 'kg',
-            image_url: it.image_url || '/images/hero-vegetables.png',
-            active: it.active !== false,
-            isSwapped: Boolean(it.isSwapped),
-            replacedProductName: it.replacedProductName,
-          }));
-          if (current.length > 0) {
-            setCurrentItems(current);
+          // Only overwrite currentItems if cart does NOT already contain customized items!
+          const existingCartStaple = cartItems.find((ci) => {
+            const b = ci.basket || {};
+            return b.id === basket.id || b.slug?.includes('staple') || b.id?.endsWith('1');
+          });
+
+          if (!existingCartStaple?.customizedItems || existingCartStaple.customizedItems.length === 0) {
+            const current: StapleItem[] = (data.currentItems || data.defaultItems || []).map((it: any) => ({
+              id: it.productId || it.product_id || it.id,
+              name: it.productName || it.name,
+              price: Number(it.price) || 35,
+              market_price: it.compare_at_price ?? it.market_price ?? Math.round(Number(it.price || 35) * 1.25),
+              quantity: it.quantity || 1,
+              unit: it.unit || 'kg',
+              image_url: it.image_url || '/images/hero-vegetables.png',
+              active: it.active !== false,
+              isSwapped: Boolean(it.isSwapped),
+              replacedProductName: it.replacedProductName,
+            }));
+            if (current.length > 0) {
+              setCurrentItems(current);
+            }
           }
 
-          // Eligible harvest alternatives
+          // Eligible harvest alternatives (ALL active products)
           const alts: StapleItem[] = (data.eligibleAlternatives || []).map((it: any) => ({
             id: it.id || it.productId,
             name: it.name || it.productName,
@@ -175,7 +249,13 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
           setEligibleAlternatives(alts);
         } else if (parsedInitial && parsedInitial.length > 0) {
           setDefaultItems(parsedInitial);
-          setCurrentItems(parsedInitial);
+          const existingCartStaple = cartItems.find((ci) => {
+            const b = ci.basket || {};
+            return b.id === basket.id || b.slug?.includes('staple') || b.id?.endsWith('1');
+          });
+          if (!existingCartStaple?.customizedItems || existingCartStaple.customizedItems.length === 0) {
+            setCurrentItems(parsedInitial);
+          }
         }
       } catch (err) {
         console.error('Error loading staple box config:', err);
@@ -186,7 +266,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
     }
 
     loadWeeklyConfig();
-  }, [basket.id, basket.slug, parsedInitial]);
+  }, [basket.id, basket.slug, parsedInitial, cartItems]);
 
   // Live dynamic basket price
   const basketTotal = useMemo(() => {
@@ -196,6 +276,18 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
 
   const swapsRemaining = Math.max(0, maxSwaps - swapsUsed);
 
+  const currentSwapTarget = targetItemIndex !== null ? currentItems[targetItemIndex] : null;
+
+  // Filter alternatives in swap modal based on quick search
+  const filteredAlternatives = useMemo(() => {
+    const q = altSearchQuery.toLowerCase().trim();
+    const currentTargetId = currentSwapTarget?.id;
+    const currentTargetName = (currentSwapTarget?.name || '').toLowerCase().trim();
+    return eligibleAlternatives
+      .filter((alt) => alt.id !== currentTargetId && (alt.name || '').toLowerCase().trim() !== currentTargetName)
+      .filter((alt) => !q || alt.name.toLowerCase().includes(q) || (alt.slug || '').toLowerCase().includes(q));
+  }, [eligibleAlternatives, currentSwapTarget, altSearchQuery]);
+
   // Open swap modal
   const handleOpenSwap = (index: number) => {
     if (cutoffPassed) {
@@ -204,6 +296,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
     }
     setTargetItemIndex(index);
     setSelectedAltForModal(null);
+    setAltSearchQuery('');
     setSwapModalOpen(true);
   };
 
@@ -214,7 +307,7 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
     if (!target) return;
 
     if (!target.isSwapped && swapsRemaining <= 0) {
-      alert('You have reached the limit of 3 swaps for this box.');
+      alert(`You have reached the limit of ${maxSwaps} swaps for this box.`);
       return;
     }
 
@@ -287,8 +380,6 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
     syncToCart();
     setReviewDrawerOpen(true);
   };
-
-  const currentSwapTarget = targetItemIndex !== null ? currentItems[targetItemIndex] : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FBFBFA] text-slate-900 pb-32">
@@ -394,8 +485,8 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
         )}
 
         {/* ── 2. YOUR WEEKLY VEGETABLES SECTION ──────────────────────────── */}
-        <div className="space-y-3">
-          <div className="px-1">
+        <div className="space-y-3 scroll-mt-24" id="swapping-section">
+          <div className="px-1" id="customize">
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
               Your Weekly Vegetables
             </h2>
@@ -560,15 +651,43 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
               </div>
 
               {/* Right Column: Choose an alternative */}
-              <div className="sm:col-span-7 space-y-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                  Choose an alternative ({eligibleAlternatives.length})
-                </span>
+              <div className="sm:col-span-7 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Choose an alternative ({filteredAlternatives.length})
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    Full Harvest Catalogue
+                  </span>
+                </div>
+
+                {/* Quick Search */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={altSearchQuery}
+                    onChange={(e) => setAltSearchQuery(e.target.value)}
+                    placeholder="Search all vegetables (e.g. Palak, Beans, Chilli)..."
+                    className="w-full px-3.5 py-2 text-xs font-medium border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-700 placeholder:text-slate-400"
+                  />
+                  {altSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAltSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
 
                 <div className="border border-slate-200/90 rounded-2xl divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
-                  {eligibleAlternatives
-                    .filter((alt) => alt.id !== currentSwapTarget.id)
-                    .map((alt) => {
+                  {filteredAlternatives.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-400">
+                      No matching vegetables found.
+                    </div>
+                  ) : (
+                    filteredAlternatives.map((alt) => {
                       const isSelected = selectedAltForModal?.id === alt.id;
                       return (
                         <div
@@ -628,7 +747,8 @@ export function StapleBoxZeptoView({ basket, initialItems }: StapleBoxZeptoViewP
                           </button>
                         </div>
                       );
-                    })}
+                    })
+                  )}
                 </div>
               </div>
             </div>

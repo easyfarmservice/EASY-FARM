@@ -362,6 +362,22 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
                 <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md rounded-xl py-1 px-2.5 border border-white shadow-md flex items-center gap-1.5 text-[10px] font-black text-[#0C4A34]">
                   <span>🌿 Direct From Farm</span>
                 </div>
+
+                {/* Floating Basket Price Card (Starts at ₹0 and updates live) */}
+                <div className="absolute bottom-3 left-3 right-3 bg-white/95 backdrop-blur-md rounded-xl p-3 border border-white shadow-lg flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block tracking-wider">
+                      Custom Box Price
+                    </span>
+                    <span className="text-xl font-black text-[#0B3B2C]">
+                      ₹{subtotal}
+                    </span>
+                  </div>
+
+                  <span className="text-[11px] font-bold text-slate-600 bg-slate-100/90 px-3 py-1.5 rounded-xl border border-slate-200">
+                    {totalSelectedItems === 0 ? 'Starts at ₹0' : `${totalSelectedItems} items selected`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -436,7 +452,7 @@ export function CustomBoxZeptoView({ products, customBasket }: CustomBoxZeptoVie
         </div>
 
         {/* ── 3. ELEGANT PRODUCT CARDS WITH NET QUANTITY SELECTION ───────── */}
-        <div>
+        <div id="customize" className="scroll-mt-24">
           {filteredProducts.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
               {filteredProducts.map((p) => {

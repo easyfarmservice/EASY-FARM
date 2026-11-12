@@ -114,7 +114,7 @@ export function Header() {
             Home
           </Link>
           <Link
-            href="/baskets/staple-basket"
+            href="/baskets/staple-basket#swapping-section"
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               isStapleActive
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -124,7 +124,7 @@ export function Header() {
             Staple Box
           </Link>
           <Link
-            href="/baskets/custom-basket"
+            href="/select-vegetables#customize"
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               isCustomActive
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -240,14 +240,14 @@ export function Header() {
             Home
           </Link>
           <Link
-            href="/baskets/staple-basket"
+            href="/baskets/staple-basket#swapping-section"
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
             Staple Box
           </Link>
           <Link
-            href="/baskets/custom-basket"
+            href="/select-vegetables#customize"
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >

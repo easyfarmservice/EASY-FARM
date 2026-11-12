@@ -84,11 +84,16 @@ export default async function BasketDetailPage({ params }: PageProps) {
   }
 
   // STAPLE BOX VIEW
+  const products = await UnifiedBasketService.getAllProducts();
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <Header />
       <main className="flex-1">
-        <StapleBoxZeptoView basket={basket} initialItems={basket.items} />
+        <StapleBoxZeptoView
+          basket={basket}
+          initialItems={basket.items}
+          allProducts={products}
+        />
       </main>
       <Footer />
       <BottomNav />

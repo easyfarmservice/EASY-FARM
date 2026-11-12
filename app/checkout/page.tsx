@@ -60,6 +60,7 @@ export default function CheckoutPage() {
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isOrderConfirmed, setIsOrderConfirmed] = useState(false);
 
   // Easy Coins Reward State (supports claiming any number of items up to balance + basket purchase discount @ 10 Coins = ₹1)
   const [selectedRewards, setSelectedRewards] = useState<ClaimedRewardSelection[]>([]);
@@ -811,8 +812,9 @@ export default function CheckoutPage() {
                 } catch { }
               }
 
+              setIsOrderConfirmed(true);
               clearCart();
-              router.push(`/orders/${confirmedOrderId}?success=true&payment_id=${paymentResp.razorpay_payment_id}`);
+              window.location.replace(`/orders/${confirmedOrderId}?success=true&payment_id=${paymentResp.razorpay_payment_id}`);
             } catch (vErr: any) {
               setError(vErr.message || 'Payment verification failed. Please contact support.');
               setLoading(false);
@@ -844,8 +846,9 @@ export default function CheckoutPage() {
         rzp.open();
       } else {
         // Fallback if no payment order returned
+        setIsOrderConfirmed(true);
         clearCart();
-        router.push(`/orders/${confirmedOrderId}?success=true`);
+        window.location.replace(`/orders/${confirmedOrderId}?success=true`);
       }
     } catch (err: any) {
       setError(err.message || 'Payment initiation failed. Please check your delivery location.');
@@ -853,6 +856,17 @@ export default function CheckoutPage() {
     }
   };
 
+  if (isOrderConfirmed) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <EasyFarmLoader size="md" text="Order confirmed! Opening your live order tracking..." />
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (

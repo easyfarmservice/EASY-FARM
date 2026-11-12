@@ -243,10 +243,17 @@ export default function AdminProductsPage() {
 
     setProducts(products.filter((item) => item.id !== p.id));
     try {
-      await fetch(`/api/admin/products?id=${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/products?id=${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete');
+      }
       setMsg({ type: 'success', text: `Deleted '${p.name}' from catalog.` });
-    } catch (e) {
+      await fetchProducts();
+    } catch (e: any) {
       console.error('Delete error:', e);
+      setMsg({ type: 'error', text: `Failed to delete '${p.name}': ${e.message || e}` });
+      await fetchProducts();
     }
   };
 

@@ -56,12 +56,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items]);
 
+  const matchesBasket = (b1: Basket, b2: Basket) => {
+    if (!b1 || !b2) return false;
+    if (b1.id && b2.id && b1.id === b2.id) return true;
+    if (b1.slug && b2.slug && b1.slug === b2.slug) return true;
+    const isStaple1 = b1.slug?.includes('staple') || b1.id?.endsWith('1');
+    const isStaple2 = b2.slug?.includes('staple') || b2.id?.endsWith('1');
+    if (isStaple1 && isStaple2) return true;
+    const isCustom1 = b1.slug?.includes('custom') || b1.id?.endsWith('4');
+    const isCustom2 = b2.slug?.includes('custom') || b2.id?.endsWith('4');
+    if (isCustom1 && isCustom2) return true;
+    return false;
+  };
+
   const addToCart = (basket: Basket, customizedItems?: any[]) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.basket.id === basket.id);
+      const existing = prev.find((i) => matchesBasket(i.basket, basket));
       if (existing) {
         return prev.map((i) =>
-          i.basket.id === basket.id
+          matchesBasket(i.basket, basket)
             ? {
                 ...i,
                 basket: { ...i.basket, ...basket },
@@ -77,10 +90,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const updateCustomizedBasket = (basket: Basket, customizedItems: any[], quantity = 1) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.basket.id === basket.id);
+      const existing = prev.find((i) => matchesBasket(i.basket, basket));
       if (existing) {
         return prev.map((i) =>
-          i.basket.id === basket.id
+          matchesBasket(i.basket, basket)
             ? {
                 ...i,
                 basket: { ...i.basket, ...basket },
@@ -95,7 +108,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeFromCart = (basketId: string) => {
-    setItems((prev) => prev.filter((i) => i.basket.id !== basketId));
+    setItems((prev) => prev.filter((i) => i.basket.id !== basketId && i.basket.slug !== basketId));
   };
 
   const updateQuantity = (basketId: string, quantity: number) => {
@@ -104,7 +117,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setItems((prev) =>
-      prev.map((i) => (i.basket.id === basketId ? { ...i, quantity } : i))
+      prev.map((i) =>
+        i.basket.id === basketId || i.basket.slug === basketId ? { ...i, quantity } : i
+      )
     );
   };
 
