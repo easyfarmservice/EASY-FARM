@@ -42,3 +42,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /scratch/
+
+# mobile (react native / expo)
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/android/
+mobile/ios/
+mobile/.env*.local
+mobile/.env
+
