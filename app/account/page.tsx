@@ -132,6 +132,7 @@ export default function AccountPage() {
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [deletingAddressId, setDeletingAddressId] = useState<string | null>(null);
 
   // Profile Form States
   const [profileNameInput, setProfileNameInput] = useState('');
@@ -198,10 +199,6 @@ export default function AccountPage() {
         const sessionUser = (await supabase.auth.getSession()).data?.session?.user;
         if (sessionUser) {
           authUser = sessionUser;
-        } else {
-          // Brief 250ms grace period for newly committed cookies
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          authUser = (await supabase.auth.getUser()).data?.user;
         }
       }
 
@@ -254,58 +251,54 @@ export default function AccountPage() {
       setProfileNameInput(activeProfile.full_name || '');
       setProfilePhoneInput(activeProfile.phone || '');
 
-      // C. Dynamic Orders Strictly for THIS Authenticated User
-      // User requirement: "the orders should display only when the order is confirmed"
-      const { data: dbOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          customer_id,
-          status,
-          subtotal,
-          delivery_fee,
-          total,
-          delivery_date,
-          created_at,
-          order_items (
+      // C & D. Parallel Fetch: Dynamic Orders & Dynamic Saved Addresses for THIS Authenticated User
+      const [ordersResult, addressesResult] = await Promise.all([
+        supabase
+          .from('orders')
+          .select(`
             id,
-            order_id,
-            basket_id,
-            basket_name,
-            quantity,
-            unit_price,
-            total_price,
-            baskets (
+            customer_id,
+            status,
+            subtotal,
+            delivery_fee,
+            total,
+            delivery_date,
+            created_at,
+            order_items (
               id,
-              name,
-              image_url,
-              slug
+              order_id,
+              basket_id,
+              basket_name,
+              quantity,
+              unit_price,
+              total_price,
+              baskets (
+                id,
+                name,
+                image_url,
+                slug
+              )
             )
-          )
-        `)
-        .eq('customer_id', activeProfile.id)
-        .in('status', [...CONFIRMED_ACTIVE_STATUSES, 'delivered'])
-        .order('created_at', { ascending: false });
+          `)
+          .eq('customer_id', activeProfile.id)
+          .in('status', [...CONFIRMED_ACTIVE_STATUSES, 'delivered'])
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('customer_addresses')
+          .select('*')
+          .eq('customer_id', activeProfile.id)
+          .order('is_default', { ascending: false }),
+      ]);
 
-      if (ordersError) {
-        console.warn('Orders fetch error from Supabase:', ordersError.message);
+      if (ordersResult.error) {
+        console.warn('Orders fetch error from Supabase:', ordersResult.error.message);
       }
+      setOrders((ordersResult.data as any[]) || []);
 
-      setOrders((dbOrders as any[]) || []);
-
-      // D. Dynamic Saved Addresses Strictly for THIS User's customer_id
-      // User requirement: "every user has their own address"
-      const { data: dbAddresses, error: addrError } = await supabase
-        .from('customer_addresses')
-        .select('*')
-        .eq('customer_id', activeProfile.id)
-        .order('is_default', { ascending: false });
-
-      if (addrError) {
-        console.warn('Addresses fetch error from Supabase:', addrError.message);
+      if (addressesResult.error) {
+        console.warn('Addresses fetch error from Supabase:', addressesResult.error.message);
       }
-
-      setAddresses(dbAddresses || []);
+      setAddresses(addressesResult.data || []);
     } catch (err: any) {
       console.error('Fatal loadAccountData error:', err);
       setFeedback({ type: 'error', message: err.message || 'Unable to load account data' });
@@ -372,14 +365,25 @@ export default function AccountPage() {
   // ─────────────────────────────────────────────────────────────────────────────
   const openNewAddressModal = () => {
     setEditingAddressId(null);
+    let defaultPin = '';
+    let defaultLocality = '';
+    try {
+      const stored = localStorage.getItem('easyfarm_selected_location');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.pincode) defaultPin = parsed.pincode;
+        if (parsed.community || parsed.area) defaultLocality = parsed.community || parsed.area;
+      }
+    } catch {}
+
     setAddressForm({
       label: 'Home',
       fullName: profile?.full_name || '',
       phone: profile?.phone || '',
       apartment: '',
       flatNo: '',
-      locality: LAUNCH_ZONE,
-      pincode: '501301',
+      locality: defaultLocality || LAUNCH_ZONE,
+      pincode: defaultPin || '500088',
       isDefault: addresses.length === 0,
     });
     setShowAddressModal(true);
@@ -394,7 +398,7 @@ export default function AccountPage() {
       apartment: addr.apartment || '',
       flatNo: addr.full_address || '',
       locality: addr.locality || LAUNCH_ZONE,
-      pincode: addr.pincode || '501301',
+      pincode: addr.pincode || '500088',
       isDefault: Boolean(addr.is_default),
     });
     setShowAddressModal(true);
@@ -472,21 +476,60 @@ export default function AccountPage() {
 
   const handleDeleteAddress = async (id: string) => {
     if (!profile) return;
-    if (!confirm('Are you sure you want to remove this delivery address?')) return;
+    if (typeof window !== 'undefined' && !window.confirm('Are you sure you want to remove this delivery address?')) {
+      return;
+    }
+
+    setDeletingAddressId(id);
+    setFeedback(null);
+
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('customer_addresses')
-        .delete()
-        .eq('id', id)
-        .eq('customer_id', profile.id);
+      const res = await fetch('/api/account/address/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          addressId: id,
+          customerId: profile.id,
+        }),
+      });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to remove address.');
+      }
 
-      setAddresses((prev) => prev.filter((a) => a.id !== id));
+      setAddresses((prev) => {
+        const remaining = prev.filter((a) => a.id !== id);
+        if (remaining.length > 0 && !remaining.some((a) => a.is_default)) {
+          remaining[0].is_default = true;
+        }
+        return remaining;
+      });
+
+      // Clear from localStorage cache as well
+      if (typeof window !== 'undefined') {
+        try {
+          const emailKey = profile.email ? `easyfarm_saved_addresses_${profile.email.toLowerCase().trim()}` : null;
+          const idKey = profile.id ? `easyfarm_saved_addresses_${profile.id}` : null;
+          [emailKey, idKey].forEach((k) => {
+            if (!k) return;
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const updated = parsed.filter((a: any) => a.id !== id);
+                localStorage.setItem(k, JSON.stringify(updated));
+              }
+            }
+          });
+        } catch {}
+      }
+
       setFeedback({ type: 'success', message: 'Address removed successfully.' });
     } catch (err: any) {
-      setFeedback({ type: 'error', message: `Failed to remove address: ${err.message}` });
+      setFeedback({ type: 'error', message: err.message || 'Failed to remove address' });
+    } finally {
+      setDeletingAddressId(null);
     }
   };
 
@@ -1033,12 +1076,17 @@ export default function AccountPage() {
                         </button>
                         <button
                           type="button"
+                          disabled={deletingAddressId === addr.id}
                           onClick={() => handleDeleteAddress(addr.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 transition rounded-lg hover:bg-slate-100"
+                          className="p-1.5 text-slate-400 hover:text-red-600 transition rounded-lg hover:bg-slate-100 disabled:opacity-50"
                           title="Remove Address"
                           aria-label="Delete address"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {deletingAddressId === addr.id ? (
+                            <div className="w-4 h-4 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
                         </button>
                       </div>
                     </div>

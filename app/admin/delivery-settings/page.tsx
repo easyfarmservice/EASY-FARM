@@ -15,8 +15,8 @@ export default function AdminDeliverySettingsPage() {
   const [baseFee, setBaseFee] = useState('40');
   const [freeThreshold, setFreeThreshold] = useState('499');
   const [minOrder, setMinOrder] = useState('100');
-  const [orderCutoffDay, setOrderCutoffDay] = useState('Thursday');
-  const [orderCutoffTime, setOrderCutoffTime] = useState('23:59');
+  const [orderCutoffDay, setOrderCutoffDay] = useState('Saturday');
+  const [orderCutoffTime, setOrderCutoffTime] = useState('23:59:59');
   const [deliveryDay, setDeliveryDay] = useState('Sunday');
   const [deliveryPromise, setDeliveryPromise] = useState('Sunday by 6 PM');
 

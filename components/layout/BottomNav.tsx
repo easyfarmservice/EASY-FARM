@@ -28,6 +28,7 @@ export function BottomNav() {
           <Link
             key={item.label}
             href={item.href}
+            prefetch={true}
             className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium relative min-h-[48px] ${
               isActive ? 'text-emerald-800 font-bold' : 'text-slate-500 hover:text-slate-800'
             }`}

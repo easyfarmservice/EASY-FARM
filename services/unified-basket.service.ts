@@ -114,11 +114,22 @@ function savePersistedMasterProducts(products: Product[]) {
   }
 }
 
+let inMemoryProductsCache: { data: Product[]; timestamp: number } | null = null;
+const PRODUCTS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
+export function invalidateProductsCache() {
+  inMemoryProductsCache = null;
+}
+
 export class UnifiedBasketService {
   /**
-   * Loads all master products from durable disk catalog + database
+   * Loads all master products from durable disk catalog + database with 30s in-memory caching
    */
-  static async getAllProducts(): Promise<Product[]> {
+  static async getAllProducts(forceRefresh = false): Promise<Product[]> {
+    if (!forceRefresh && inMemoryProductsCache && Date.now() - inMemoryProductsCache.timestamp < PRODUCTS_CACHE_TTL_MS) {
+      return inMemoryProductsCache.data;
+    }
+
     const persisted = loadPersistedMasterProducts();
 
     try {
@@ -141,6 +152,8 @@ export class UnifiedBasketService {
           eligible_baskets: p.eligible_baskets || ['staple-basket', 'green-basket', 'special-basket', 'custom-basket'],
         }));
 
+        inMemoryProductsCache = { data: dbList, timestamp: Date.now() };
+
         // Always sync the master-products.json file to disk so cache matches DB exactly
         savePersistedMasterProducts(dbList);
         return dbList;
@@ -150,10 +163,12 @@ export class UnifiedBasketService {
     }
 
     if (persisted && persisted.length > 0) {
+      inMemoryProductsCache = { data: persisted, timestamp: Date.now() };
       return persisted;
     }
 
     const defaults = this.getDefaultProducts();
+    inMemoryProductsCache = { data: defaults, timestamp: Date.now() };
     savePersistedMasterProducts(defaults);
     return defaults;
   }
@@ -719,6 +734,7 @@ export class UnifiedBasketService {
       currentList.unshift(savedRecord);
     }
     savePersistedMasterProducts(currentList);
+    invalidateProductsCache();
 
     return { success: true, product: savedRecord };
   }
@@ -776,6 +792,7 @@ export class UnifiedBasketService {
       }
     }
     savePersistedMasterProducts(currentList);
+    invalidateProductsCache();
 
     return {
       success: true,
@@ -819,6 +836,7 @@ export class UnifiedBasketService {
     const currentList = await this.getAllProducts();
     const filtered = currentList.filter((p) => p.id !== id && `p-${p.slug}` !== id && p.slug !== id.replace(/^p-/, ''));
     savePersistedMasterProducts(filtered);
+    invalidateProductsCache();
 
     return { success: true };
   }
@@ -1162,7 +1180,7 @@ export class UnifiedBasketService {
    * Customer Facing: Save customized items with strict rule validation:
    * - Max 3 swaps for fixed baskets
    * - Exactly 5 items for fixed baskets
-   * - Cutoff check (before Thursday 11:59 PM)
+   * - Cutoff check (before Saturday 11:59 PM)
    * - Atomic customer-specific save (does not modify global basket)
    */
   static async saveCustomerCustomization(
@@ -1182,13 +1200,15 @@ export class UnifiedBasketService {
     const isCustomBasket = basketId.endsWith('4') || basketId.includes('custom');
 
     // 1. Cutoff Validation
+    // sundayDate in UTC
     const sundayDate = new Date(targetWeek + 'T00:00:00Z');
     const cutoffDate = new Date(sundayDate);
-    cutoffDate.setUTCDate(sundayDate.getUTCDate() - 3);
-    cutoffDate.setUTCHours(18, 29, 50, 0);
+    // Saturday 11:59:59 PM IST is Saturday 18:29:59 UTC (Sunday - 1 day at 18:29:59 UTC)
+    cutoffDate.setUTCDate(sundayDate.getUTCDate() - 1);
+    cutoffDate.setUTCHours(18, 29, 59, 999);
 
     if (new Date() > cutoffDate) {
-      throw new Error(`Weekly order cutoff has passed (${cutoffDate.toLocaleString()}). Customizations are locked for this week.`);
+      throw new Error(`Weekly order cutoff has passed (${cutoffDate.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}). Customizations are locked for this week's delivery.`);
     }
 
     // 2. Count Validation

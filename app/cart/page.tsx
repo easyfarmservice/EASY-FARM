@@ -21,10 +21,12 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { useCart } from '@/components/cart/CartProvider';
+import { useUserSession } from '@/components/auth/UserSessionProvider';
 import { getVegetableImageUrl } from '@/lib/utils/vegetable-images';
 
 export default function CartPage() {
   const { items, updateQuantity, removeFromCart, subtotal, totalItems } = useCart();
+  const { coinsBalance } = useUserSession();
 
   const [couponCode, setCouponCode] = useState('');
   const [couponApplied, setCouponApplied] = useState(false);
@@ -38,32 +40,17 @@ export default function CartPage() {
   const [isFreeDelivery, setIsFreeDelivery] = useState(true);
 
   // Easy Coins Basket Discount State (10 Easy Coins = ₹1 Rupee)
-  const [availableCoins, setAvailableCoins] = useState<number>(150);
+  const [availableCoins, setAvailableCoins] = useState<number>(coinsBalance || 150);
   const [appliedDiscountCoins, setAppliedDiscountCoins] = useState<number>(0);
   const [claimedItemsCoins, setClaimedItemsCoins] = useState<number>(0);
 
   useEffect(() => {
-    // Fetch customer's available Easy Coins balance and persisted selections
-    const loadCoinBalance = async () => {
-      try {
-        const cachedProfileId =
-          typeof window !== 'undefined' ? localStorage.getItem('easyfarm_customer_profile_id') : null;
-        const coinUrl = cachedProfileId
-          ? `/api/easy-coins/balance?customerId=${encodeURIComponent(cachedProfileId)}`
-          : '/api/easy-coins/balance';
-        const res = await fetch(coinUrl, { cache: 'no-store' });
-        const data = await res.json();
-        if (data.success && typeof data.available_balance === 'number') {
-          setAvailableCoins(data.available_balance);
-        }
-      } catch {}
-    };
-    loadCoinBalance();
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('easycoins-updated', loadCoinBalance);
+    if (typeof coinsBalance === 'number') {
+      setAvailableCoins(coinsBalance);
     }
+  }, [coinsBalance]);
 
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const savedDisc = localStorage.getItem('easyfarm_applied_discount_coins');

@@ -1,6 +1,21 @@
 import { client } from '@/sanity/lib/client';
 import { urlForImage } from '@/sanity/lib/image';
 
+const sanityCache = new Map<string, { data: any; timestamp: number }>();
+const SANITY_TTL_MS = 60 * 1000; // 60 seconds
+
+async function fetchWithCache<T>(cacheKey: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = sanityCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SANITY_TTL_MS) {
+    return cached.data;
+  }
+  const data = await fetcher();
+  if (data !== undefined && data !== null) {
+    sanityCache.set(cacheKey, { data, timestamp: Date.now() });
+  }
+  return data;
+}
+
 export interface SanityBasket {
   _id: string;
   name: string;
@@ -101,103 +116,111 @@ export class SanityService {
    * Fetch customer testimonials from Sanity CMS
    */
   static async getTestimonials(): Promise<any[]> {
-    try {
-      const query = `*[_type == "testimonial" && active == true] {
-        _id,
-        customerName,
-        location,
-        content,
-        rating
-      }`;
+    return fetchWithCache('testimonials', async () => {
+      try {
+        const query = `*[_type == "testimonial" && active == true] {
+          _id,
+          customerName,
+          location,
+          content,
+          rating
+        }`;
 
-      return (await client.fetch(query)) || [];
-    } catch (err) {
-      console.warn('[SanityService] getTestimonials error:', err);
-      return [];
-    }
+        return (await client.fetch(query)) || [];
+      } catch (err) {
+        console.warn('[SanityService] getTestimonials error:', err);
+        return [];
+      }
+    });
   }
 
   /**
    * Fetch home page content (singleton) from Sanity CMS
    */
   static async getHomePageContent(): Promise<any | null> {
-    try {
-      const query = `*[_type == "homePage" && _id == "homePage"][0] {
-        heroHeadlinePart1,
-        heroHeadlinePart2,
-        heroSubtitle,
-        heroPrimaryButton,
-        heroSecondaryButton,
-        heroImageCaption,
-        heroImageDescription,
-        benefitPills,
-        trustIndicators,
-        whyTagline,
-        whyTitle,
-        whySubtitle,
-        whyBenefits,
-        howTagline,
-        howTitle,
-        howSubtitle,
-        howSteps,
-        pipelineTagline,
-        pipelineTitle,
-        pipelineSubtitle,
-        pipelineSteps,
-        communityTagline,
-        communityTitle,
-        communitySubtitle,
-        communityButtonText,
-        faqTagline,
-        faqTitle,
-        faqs
-      }`;
-      return await client.fetch(query);
-    } catch (err) {
-      console.warn('[SanityService] getHomePageContent error:', err);
-      return null;
-    }
+    return fetchWithCache('homePageContent', async () => {
+      try {
+        const query = `*[_type == "homePage" && _id == "homePage"][0] {
+          heroHeadlinePart1,
+          heroHeadlinePart2,
+          heroSubtitle,
+          heroPrimaryButton,
+          heroSecondaryButton,
+          heroImageCaption,
+          heroImageDescription,
+          benefitPills,
+          trustIndicators,
+          whyTagline,
+          whyTitle,
+          whySubtitle,
+          whyBenefits,
+          howTagline,
+          howTitle,
+          howSubtitle,
+          howSteps,
+          pipelineTagline,
+          pipelineTitle,
+          pipelineSubtitle,
+          pipelineSteps,
+          communityTagline,
+          communityTitle,
+          communitySubtitle,
+          communityButtonText,
+          faqTagline,
+          faqTitle,
+          faqs
+        }`;
+        return await client.fetch(query);
+      } catch (err) {
+        console.warn('[SanityService] getHomePageContent error:', err);
+        return null;
+      }
+    });
   }
 
   /**
    * Fetch site settings & footer (singleton) from Sanity CMS
    */
   static async getSiteSettings(): Promise<any | null> {
-    try {
-      const query = `*[_type == "siteSettings" && _id == "siteSettings"][0] {
-        announcementActive,
-        announcementText,
-        siteTagline,
-        supportEmail,
-        supportPhone,
-        footerAbout,
-        activeZoneText,
-        upcomingZones,
-        copyrightNotice
-      }`;
-      return await client.fetch(query);
-    } catch (err) {
-      console.warn('[SanityService] getSiteSettings error:', err);
-      return null;
-    }
+    return fetchWithCache('siteSettings', async () => {
+      try {
+        const query = `*[_type == "siteSettings" && _id == "siteSettings"][0] {
+          announcementActive,
+          announcementText,
+          siteTagline,
+          supportEmail,
+          supportPhone,
+          footerAbout,
+          activeZoneText,
+          upcomingZones,
+          copyrightNotice
+        }`;
+        return await client.fetch(query);
+      } catch (err) {
+        console.warn('[SanityService] getSiteSettings error:', err);
+        return null;
+      }
+    });
   }
 
   /**
    * Fetch How It Works page content (singleton) from Sanity CMS
    */
   static async getHowItWorksPage(): Promise<any | null> {
-    try {
-      const query = `*[_type == "howItWorksPage" && _id == "howItWorksPage"][0] {
-        bannerTitle,
-        bannerSubtitle,
-        cutoffSectionTitle,
-        cutoffPoints,
-        ctaButtonText
-      }`;
-      return await client.fetch(query);
-    } catch (err) {
-      console.warn('[SanityService] getHowItWorksPage error:', err);
-      return null;
-    }
+    return fetchWithCache('howItWorksPage', async () => {
+      try {
+        const query = `*[_type == "howItWorksPage" && _id == "howItWorksPage"][0] {
+          bannerTitle,
+          bannerSubtitle,
+          cutoffSectionTitle,
+          cutoffPoints,
+          ctaButtonText
+        }`;
+        return await client.fetch(query);
+      } catch (err) {
+        console.warn('[SanityService] getHowItWorksPage error:', err);
+        return null;
+      }
+    });
   }
 }

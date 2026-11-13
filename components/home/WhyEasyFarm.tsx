@@ -12,7 +12,7 @@ const DEFAULT_BENEFITS = [
   },
   {
     title: 'Weekly Convenience',
-    description: 'Subscribe or order weekly before the Thursday cutoff. Your Sunday kitchen stock is sorted automatically.',
+    description: 'Subscribe or order weekly before the Saturday 11:59 PM cutoff. Your Sunday kitchen stock is sorted automatically.',
   },
   {
     title: 'Transparent Pricing',

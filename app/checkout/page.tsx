@@ -112,14 +112,14 @@ export default function CheckoutPage() {
     setPinnedCoords({ lat: result.lat, lng: result.lng });
     setFormAddress((prev) => ({
       ...prev,
-      locality: result.locality || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-      pincode: result.pincode || '501301',
-      apartment: result.placeName || result.communityName || prev.apartment || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+      locality: result.locality || prev.locality || 'Pocharam, Ghatkesar',
+      pincode: result.pincode || prev.pincode || '500088',
+      apartment: result.placeName || result.communityName || prev.apartment || '',
     }));
     if (result.isServiceable) {
       setError((prev) => (prev && (prev.includes('corridor') || prev.includes('Outside') || prev.includes('Pinned')) ? null : prev));
     } else {
-      setError('Pinned location is outside our active Ghatkesar & Pocharam, Hyderabad (Active) Sunday delivery corridor. Please move the pin to Ghatkesar & Pocharam, Hyderabad (Active).');
+      setError('Pinned location is outside our active delivery corridor. Please move the pin within the highlighted delivery zone.');
     }
   }, []);
 
@@ -814,7 +814,7 @@ export default function CheckoutPage() {
 
               setIsOrderConfirmed(true);
               clearCart();
-              window.location.replace(`/orders/${confirmedOrderId}?success=true&payment_id=${paymentResp.razorpay_payment_id}`);
+              router.replace(`/orders/${confirmedOrderId}?success=true&payment_id=${paymentResp.razorpay_payment_id}`);
             } catch (vErr: any) {
               setError(vErr.message || 'Payment verification failed. Please contact support.');
               setLoading(false);
@@ -848,7 +848,7 @@ export default function CheckoutPage() {
         // Fallback if no payment order returned
         setIsOrderConfirmed(true);
         clearCart();
-        window.location.replace(`/orders/${confirmedOrderId}?success=true`);
+        router.replace(`/orders/${confirmedOrderId}?success=true`);
       }
     } catch (err: any) {
       setError(err.message || 'Payment initiation failed. Please check your delivery location.');
@@ -1020,23 +1020,35 @@ export default function CheckoutPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Delivery Zone</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Delivery Zone / Locality *
+                        </label>
                         <input
                           type="text"
-                          disabled
-                          value={formAddress.locality || 'Ghatkesar & Pocharam, Hyderabad (Active)'}
-                          className="w-full px-4 py-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 font-bold text-sm min-h-[44px]"
+                          required
+                          placeholder="e.g. Pocharam / Narapally / Ghatkesar"
+                          value={formAddress.locality}
+                          onChange={(e) => setFormAddress({ ...formAddress, locality: e.target.value })}
+                          className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none min-h-[44px]"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">PIN Code</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          PIN Code (6 digits) *
+                        </label>
                         <input
                           type="text"
-                          disabled
-                          value={formAddress.pincode || '500088'}
-                          className="w-full px-4 py-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 font-bold text-sm min-h-[44px]"
+                          required
+                          maxLength={6}
+                          placeholder="e.g. 500088 / 501301 / 500098"
+                          value={formAddress.pincode}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                            setFormAddress({ ...formAddress, pincode: val });
+                          }}
+                          className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none min-h-[44px]"
                         />
                       </div>
                     </div>

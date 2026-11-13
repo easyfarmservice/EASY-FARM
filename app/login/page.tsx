@@ -264,12 +264,9 @@ function LoginFormContent() {
         targetUrl = nextParam;
       }
 
-      // Full document navigation ensures session cookies are dispatched with HTTP headers
-      if (typeof window !== 'undefined') {
-        window.location.href = targetUrl;
-      } else {
-        router.push(targetUrl);
-      }
+      // Client-side navigation with server refresh
+      router.refresh();
+      router.push(targetUrl);
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
     } finally {

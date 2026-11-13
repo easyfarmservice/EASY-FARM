@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ShoppingBag, MapPin, User, Menu, X, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/components/cart/CartProvider';
-import { createClient } from '@/lib/supabase/client';
+import { useUserSession } from '@/components/auth/UserSessionProvider';
 import { EasyFarmLogo } from '@/components/ui/Logo';
 import { LocationPickerTrigger } from '@/components/location/LocationPicker';
-import { SanityService } from '@/services/sanity.service';
 import { EasyCoinsBadge } from '@/components/rewards/EasyCoinsBadge';
 import { WeeklyStreakBadge } from '@/components/rewards/WeeklyStreakBadge';
 import { RenewedAcceptanceModal } from '@/components/legal/RenewedAcceptanceModal';
@@ -16,65 +15,7 @@ import { RenewedAcceptanceModal } from '@/components/legal/RenewedAcceptanceModa
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { totalItems } = useCart();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState<{ active: boolean; text: string } | null>(null);
-
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        if (user) {
-          setIsLoggedIn(true);
-          const signupName = user.user_metadata?.full_name || user.user_metadata?.fullName || user.email?.split('@')[0] || 'Customer';
-          setUserName(signupName);
-
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role, full_name')
-            .eq('auth_user_id', user.id)
-            .maybeSingle();
-
-          if (profile?.full_name) {
-            setUserName(profile.full_name.trim());
-          }
-
-          if (profile?.role === 'admin') {
-            setIsAdmin(true);
-          }
-        } else {
-          // Check local fallback
-          if (typeof window !== 'undefined') {
-            const demoUserStr = localStorage.getItem('easyfarm_user');
-            if (demoUserStr) {
-              const demoUser = JSON.parse(demoUserStr);
-              setIsLoggedIn(true);
-              setUserName(demoUser.fullName || demoUser.full_name || demoUser.email?.split('@')[0] || 'Customer');
-              if (demoUser.email?.includes('admin')) {
-                setIsAdmin(true);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error checking header auth state:', err);
-      }
-    }
-
-    checkAuth();
-
-    SanityService.getSiteSettings().then((settings) => {
-      if (settings?.announcementActive && settings?.announcementText) {
-        setAnnouncement({
-          active: true,
-          text: settings.announcementText,
-        });
-      }
-    }).catch(() => null);
-  }, []);
+  const { isLoggedIn, isAdmin, userName, announcement } = useUserSession();
 
   const pathname = usePathname();
 
@@ -105,6 +46,7 @@ export function Header() {
         <nav className="hidden lg:flex items-center gap-1 xl:gap-2 font-medium text-xs xl:text-sm text-slate-700 shrink-0">
           <Link
             href="/"
+            prefetch={true}
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               pathname === '/'
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -115,6 +57,7 @@ export function Header() {
           </Link>
           <Link
             href="/baskets/staple-basket#swapping-section"
+            prefetch={true}
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               isStapleActive
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -125,6 +68,7 @@ export function Header() {
           </Link>
           <Link
             href="/select-vegetables#customize"
+            prefetch={true}
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               isCustomActive
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -135,6 +79,7 @@ export function Header() {
           </Link>
           <Link
             href="/how-it-works"
+            prefetch={true}
             className={`px-2.5 xl:px-3 py-1.5 rounded-full transition whitespace-nowrap ${
               pathname === '/how-it-works'
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -145,6 +90,7 @@ export function Header() {
           </Link>
           <Link
             href="/location"
+            prefetch={true}
             className={`hidden xl:flex px-2.5 xl:px-3 py-1.5 rounded-full transition items-center gap-1 whitespace-nowrap ${
               pathname === '/location'
                 ? 'bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200/60'
@@ -161,6 +107,7 @@ export function Header() {
           {/* Cart Icon */}
           <Link
             href="/cart"
+            prefetch={true}
             className="relative p-2 rounded-full hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 transition min-w-[40px] min-h-[40px] flex items-center justify-center shrink-0"
             aria-label="Shopping Cart"
           >
@@ -182,6 +129,7 @@ export function Header() {
               {isAdmin && (
                 <Link
                   href="/admin"
+                  prefetch={true}
                   className="hidden xl:inline-flex items-center justify-center px-3 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white text-xs font-bold transition shadow-sm min-h-[38px] whitespace-nowrap"
                 >
                   <ShieldCheck className="w-4 h-4 mr-1.5 text-emerald-400" />
@@ -190,6 +138,7 @@ export function Header() {
               )}
               <Link
                 href="/account"
+                prefetch={true}
                 className="hidden sm:inline-flex items-center justify-center px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-950 text-xs sm:text-sm font-bold transition min-h-[38px] border border-emerald-200 shrink-0 whitespace-nowrap"
               >
                 <User className="w-4 h-4 mr-1.5 text-emerald-800 shrink-0" />
@@ -199,6 +148,7 @@ export function Header() {
           ) : (
             <Link
               href="/login"
+              prefetch={true}
               className="hidden sm:inline-flex items-center justify-center px-3.5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs sm:text-sm font-semibold transition shadow-sm min-h-[38px] shrink-0 whitespace-nowrap"
             >
               <User className="w-4 h-4 mr-1.5" />
@@ -234,6 +184,7 @@ export function Header() {
           </div>
           <Link
             href="/"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
@@ -241,6 +192,7 @@ export function Header() {
           </Link>
           <Link
             href="/baskets/staple-basket#swapping-section"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
@@ -248,6 +200,7 @@ export function Header() {
           </Link>
           <Link
             href="/select-vegetables#customize"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
@@ -255,6 +208,7 @@ export function Header() {
           </Link>
           <Link
             href="/how-it-works"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
@@ -262,6 +216,7 @@ export function Header() {
           </Link>
           <Link
             href="/location"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2.5 px-3 rounded-lg text-slate-800 font-medium hover:bg-emerald-50"
           >
@@ -270,6 +225,7 @@ export function Header() {
 
           <Link
             href="/account?tab=coins"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center justify-between py-2.5 px-3 rounded-lg text-amber-800 bg-amber-50/80 font-bold border border-amber-200"
           >
@@ -278,6 +234,7 @@ export function Header() {
           </Link>
           <Link
             href="/weekly-streak"
+            prefetch={true}
             onClick={() => setMobileMenuOpen(false)}
             className="flex items-center justify-between py-2.5 px-3 rounded-lg text-emerald-900 bg-emerald-50/80 font-bold border border-emerald-200"
           >

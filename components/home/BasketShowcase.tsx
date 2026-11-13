@@ -113,12 +113,12 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
               >
                 <div>
                   {/* CARD IMAGE CONTAINER (Clicking redirects directly to customization) */}
-                  <Link href={customizeHref} className="block relative h-64 sm:h-72 w-full bg-emerald-50/50 overflow-hidden cursor-pointer">
+                  <Link href={customizeHref} prefetch={true} className="block relative h-64 sm:h-72 w-full bg-emerald-50/50 overflow-hidden cursor-pointer">
                     <Image
                       src={boxImage}
                       alt={b.name}
                       fill
-                      unoptimized
+                      priority={b.sort_order === 1}
                       className="object-cover transition duration-700 group-hover:scale-105"
                       sizes="(max-width: 768px) 100vw, 50vw"
                     />
@@ -164,7 +164,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                   </Link>
 
                   {/* CONTENT BODY (Clicking redirects directly to customization) */}
-                  <Link href={customizeHref} className="block p-6 sm:p-7 space-y-5 cursor-pointer">
+                  <Link href={customizeHref} prefetch={true} className="block p-6 sm:p-7 space-y-5 cursor-pointer">
                     <p className="text-slate-600 text-sm leading-relaxed min-h-[40px]">
                       {b.description}
                     </p>
@@ -281,6 +281,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Link
                       href={customizeHref}
+                      prefetch={true}
                       className="py-3 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 border border-slate-200"
                     >
                       <Eye className="w-4 h-4 text-slate-600" />
@@ -289,6 +290,7 @@ export function BasketShowcase({ baskets }: BasketShowcaseProps) {
 
                     <Link
                       href={customizeHref}
+                      prefetch={true}
                       className="py-3 px-3 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs sm:text-sm transition shadow-md flex items-center justify-center gap-1.5"
                     >
                       <span>{isCustom ? 'Build Your Box' : 'Customize Staple Box'}</span>

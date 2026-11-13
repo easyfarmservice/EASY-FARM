@@ -38,8 +38,8 @@ export default function AdminDeliveryZonesPage() {
     city: 'Hyderabad',
     state: 'Telangana',
     delivery_day: 'Sunday',
-    order_cutoff_day: 'Thursday',
-    order_cutoff_time: '23:59:50',
+    order_cutoff_day: 'Saturday',
+    order_cutoff_time: '23:59:59',
     delivery_promise: 'Sunday by 6 PM',
     delivery_fee: 0,
     minimum_order: 250,
@@ -74,8 +74,8 @@ export default function AdminDeliveryZonesPage() {
       city: 'Hyderabad',
       state: 'Telangana',
       delivery_day: 'Sunday',
-      order_cutoff_day: 'Thursday',
-      order_cutoff_time: '23:59:50',
+      order_cutoff_day: 'Saturday',
+      order_cutoff_time: '23:59:59',
       delivery_promise: 'Sunday by 6 PM',
       delivery_fee: 0,
       minimum_order: 250,
@@ -407,7 +407,7 @@ export default function AdminDeliveryZonesPage() {
                     onChange={(e) => setFormData({ ...formData, order_cutoff_day: e.target.value })}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
                   >
-                    {['Thursday', 'Wednesday', 'Tuesday', 'Monday'].map((d) => (
+                    {['Saturday', 'Friday', 'Thursday', 'Wednesday', 'Tuesday', 'Monday'].map((d) => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>

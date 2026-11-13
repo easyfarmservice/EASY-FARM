@@ -122,9 +122,17 @@ export function DeliveryMapPicker({
 
         const data = await res.json();
 
-        const resolvedPin = geoInfo?.pincode || (lat < 17.435 || lat > 17.46 ? '501301' : '500088');
+        let resolvedPin = geoInfo?.pincode;
+        if (!resolvedPin || resolvedPin.length !== 6) {
+          if (lng < 78.60) resolvedPin = '500039';
+          else if (lng < 78.625) resolvedPin = '500092';
+          else if (lng < 78.655) resolvedPin = '500098';
+          else if (lat > 17.47) resolvedPin = '501401';
+          else if (lng >= 78.67) resolvedPin = '501301';
+          else resolvedPin = '500088';
+        }
         const resolvedLocality = geoInfo?.mandal || data.area_name || 'Ghatkesar mandal';
-        const resolvedPlace = geoInfo?.placeName || 'Ghatkesar';
+        const resolvedPlace = geoInfo?.placeName || 'Singapore Township, Pocharam';
 
         const result: LocationValidationResult = {
           lat,
@@ -176,9 +184,9 @@ export function DeliveryMapPicker({
       });
       const data = await res.json();
       if (data && data.success) {
-        const placeName = data.placeName || 'Ghatkesar';
+        const placeName = data.placeName || 'Singapore Township, Pocharam';
         const mandal = data.mandal || data.locality || 'Ghatkesar mandal';
-        const pincode = data.pincode || '501301';
+        const pincode = data.pincode || '500088';
         const shortName = data.shortName || `${placeName}, ${mandal}, ${pincode}`;
         const fullAddress = data.fullAddress || shortName;
 
@@ -237,8 +245,16 @@ export function DeliveryMapPicker({
       let geoInfo: GeocodedAddressInfo | undefined;
       if (typeof customInfo === 'string') {
         const place = customInfo.split(',')[0].trim();
-        const pinMatch = customInfo.match(/\b\d{6}\b/);
-        const pin = pinMatch ? pinMatch[0] : (newLat < 17.435 || newLat > 17.46 ? '501301' : '500088');
+        const pinMatch = customInfo.match(/\b5\d{5}\b/);
+        let pin = pinMatch ? pinMatch[0] : '';
+        if (!pin) {
+          if (newLng < 78.60) pin = '500039';
+          else if (newLng < 78.625) pin = '500092';
+          else if (newLng < 78.655) pin = '500098';
+          else if (newLat > 17.47) pin = '501401';
+          else if (newLng >= 78.67) pin = '501301';
+          else pin = '500088';
+        }
         geoInfo = {
           shortName: customInfo,
           placeName: place,

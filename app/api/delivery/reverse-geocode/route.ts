@@ -8,6 +8,7 @@ interface GeoCacheEntry {
   pincode: string;
   fullAddress: string;
   shortName: string;
+  nearText: string;
   timestamp: number;
 }
 
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     let placeName = nearest.community.name;
     let mandal = nearest.community.area || 'Ghatkesar mandal';
-    let pincode = nearest.community.pincode || '501301';
+    let pincode = nearest.community.pincode || '500088';
     let fullAddress = `${placeName}, ${mandal}, ${pincode}`;
 
     try {
@@ -76,37 +77,76 @@ export async function POST(req: NextRequest) {
         if (data && data.address) {
           const addr = data.address;
 
-          const extractedPlace =
-            addr.suburb ||
-            addr.residential ||
+          // 1. Specific local landmark, building, apartment, or society
+          const specific =
+            addr.house_name ||
             addr.building ||
             addr.amenity ||
+            addr.residential ||
             addr.neighbourhood ||
-            addr.hamlet ||
-            addr.village ||
-            addr.road ||
-            data.name ||
-            (nearest.isClose ? nearest.community.name : 'Pinned Location');
+            addr.quarter ||
+            addr.allotments ||
+            addr.estate ||
+            addr.colony;
 
-          const extractedMandal =
+          // 2. Locality or Suburb
+          const localityPart =
+            addr.suburb ||
+            addr.village ||
+            addr.hamlet ||
             addr.town ||
-            addr.county ||
+            addr.road;
+
+          // 3. Combine specific + locality if both exist and differ
+          let resolvedPlace = '';
+          if (specific && localityPart && !specific.toLowerCase().includes(localityPart.toLowerCase())) {
+            resolvedPlace = `${specific}, ${localityPart}`;
+          } else {
+            resolvedPlace =
+              specific ||
+              localityPart ||
+              data.name ||
+              (nearest.isClose ? nearest.community.name : 'Pinned Location');
+          }
+
+          // 4. Broader administrative area (Mandal / District / City)
+          const extractedMandal =
             addr.subdistrict ||
+            addr.town ||
             addr.city_district ||
+            addr.county ||
             addr.city ||
             (nearest.isClose ? nearest.community.area : 'Ghatkesar mandal');
 
-          const rawPin = addr.postcode ? String(addr.postcode).replace(/\D/g, '').slice(0, 6) : '';
-          const extractedPin =
-            rawPin && rawPin.length === 6
-              ? rawPin
-              : nearest.isClose
-              ? nearest.community.pincode
-              : latitude < 17.435 || latitude > 17.46
-              ? '501301'
-              : '500088';
+          // 5. Postal code - prioritize real 6-digit pin from Nominatim
+          let extractedPin = '';
+          if (addr.postcode) {
+            const clean = String(addr.postcode).replace(/\D/g, '').slice(0, 6);
+            if (clean.length === 6 && clean.startsWith('5')) {
+              extractedPin = clean;
+            }
+          }
+          if (!extractedPin && data.display_name) {
+            const match = data.display_name.match(/\b5\d{5}\b/);
+            if (match) {
+              extractedPin = match[0];
+            }
+          }
+          if (!extractedPin) {
+            if (nearest.isClose && nearest.community.pincode) {
+              extractedPin = nearest.community.pincode;
+            } else {
+              // Heuristic based on longitude / latitude coordinates across Hyderabad corridor
+              if (longitude < 78.60) extractedPin = '500039'; // Boduppal
+              else if (longitude < 78.625) extractedPin = '500092'; // Peerzadiguda / Medipally
+              else if (longitude < 78.655) extractedPin = '500098'; // Narapally
+              else if (latitude > 17.47) extractedPin = '501401'; // Rampally / Keesara
+              else if (longitude >= 78.67) extractedPin = '501301'; // Ghatkesar
+              else extractedPin = '500088'; // Pocharam / Singapore Township
+            }
+          }
 
-          placeName = extractedPlace;
+          placeName = resolvedPlace;
           mandal = extractedMandal;
           pincode = extractedPin;
           fullAddress = data.display_name || `${placeName}, ${mandal}, ${pincode}`;
@@ -119,6 +159,13 @@ export async function POST(req: NextRequest) {
     const parts = [placeName, mandal, pincode].filter(Boolean);
     const shortName = parts.join(', ');
 
+    // Format "Near [Exact Location]"
+    let cleanNearby = placeName.replace(/^Near\s+/i, '').trim();
+    if (!cleanNearby || cleanNearby === 'Pinned Location') {
+      cleanNearby = nearest.community.name;
+    }
+    const nearText = `Near ${cleanNearby}`;
+
     const result: GeoCacheEntry = {
       placeName,
       locality: mandal,
@@ -126,6 +173,7 @@ export async function POST(req: NextRequest) {
       pincode,
       fullAddress,
       shortName,
+      nearText,
       timestamp: Date.now(),
     };
 
@@ -142,11 +190,12 @@ export async function POST(req: NextRequest) {
         success: false,
         error: 'Failed to reverse geocode',
         placeName: 'Pinned Location',
-        locality: 'Ghatkesar mandal',
-        mandal: 'Ghatkesar mandal',
-        pincode: '501301',
-        shortName: 'Pinned Location, Ghatkesar mandal, 501301',
-        fullAddress: 'Pinned Location, Ghatkesar mandal, 501301',
+        locality: 'Ghatkesar & Pocharam Corridor',
+        mandal: 'Ghatkesar & Pocharam Corridor',
+        pincode: '500088',
+        shortName: 'Pinned Location, Ghatkesar & Pocharam, 500088',
+        fullAddress: 'Pinned Location, Ghatkesar & Pocharam, 500088',
+        nearText: 'Near Singapore Township, Pocharam',
       },
       { status: 500 }
     );

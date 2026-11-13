@@ -145,9 +145,20 @@ const DEFAULT_BASKETS: Basket[] = [
   },
 ];
 
+let inMemoryBasketsCache: { data: Basket[]; timestamp: number } | null = null;
+const BASKETS_CACHE_TTL_MS = 30 * 1000;
+
+export function invalidateBasketsCache() {
+  inMemoryBasketsCache = null;
+}
+
 export class BasketService {
-  static async getActiveBaskets(): Promise<Basket[]> {
-    return withTimeout(
+  static async getActiveBaskets(forceRefresh = false): Promise<Basket[]> {
+    if (!forceRefresh && inMemoryBasketsCache && Date.now() - inMemoryBasketsCache.timestamp < BASKETS_CACHE_TTL_MS) {
+      return inMemoryBasketsCache.data;
+    }
+
+    const result = await withTimeout(
       async () => {
         try {
           const summaries = await UnifiedBasketService.getAllBasketsWithPricing();
@@ -199,6 +210,11 @@ export class BasketService {
       3000,
       DEFAULT_BASKETS
     );
+
+    if (result && result.length > 0) {
+      inMemoryBasketsCache = { data: result, timestamp: Date.now() };
+    }
+    return result;
   }
 
   static async getBasketBySlug(slug: string): Promise<Basket | null> {

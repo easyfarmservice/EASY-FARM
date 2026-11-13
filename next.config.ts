@@ -35,12 +35,19 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    unoptimized: true,
+    formats: ['image/avif', 'image/webp'],
     qualities: [75, 90, 92, 95, 100],
+    dangerouslyAllowLocalIP: true,
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: '**.unsplash.com' },
       { protocol: 'https', hostname: 'cdn.sanity.io' },
+      { protocol: 'https', hostname: '**.sanity.io' },
+      { protocol: 'https', hostname: 'tuhnxwpnlwfllvouhpvu.supabase.co' },
       { protocol: 'https', hostname: '*.supabase.co' },
+      { protocol: 'https', hostname: '**.supabase.co' },
+      { protocol: 'https', hostname: '**.easyfarm.co.in' },
+      { protocol: 'https', hostname: '**.easyfarm.in' },
     ],
   },
   async redirects() {

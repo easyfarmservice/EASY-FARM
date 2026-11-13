@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import { ShoppingBag, Users, MapPin, RefreshCw, Database, Mail, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
@@ -31,6 +32,7 @@ interface DashboardStats {
 }
 
 export default function AdminDashboardPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -292,7 +294,7 @@ export default function AdminDashboardPage() {
                       <tr
                         key={o.id}
                         onClick={() => {
-                          window.location.href = `/admin/orders?orderId=${encodeURIComponent(o.id)}`;
+                          router.push(`/admin/orders?orderId=${encodeURIComponent(o.id)}`);
                         }}
                         className="hover:bg-emerald-50/70 transition cursor-pointer"
                         title="Click to view full order details in Order Management"

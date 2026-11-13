@@ -11,6 +11,9 @@ interface PendingDoc {
   summaryOfChanges?: string;
 }
 
+// Module-level flag so check-acceptance only executes once per session across route navigations
+let hasCheckedAcceptance = false;
+
 export function RenewedAcceptanceModal() {
   const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([]);
   const [agreed, setAgreed] = useState(false);
@@ -18,6 +21,9 @@ export function RenewedAcceptanceModal() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (hasCheckedAcceptance) return;
+    hasCheckedAcceptance = true;
+
     // Only check for logged-in customers
     const checkAcceptance = async () => {
       try {

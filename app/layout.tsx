@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter, DM_Sans, Fraunces } from 'next/font/google';
 import './globals.css';
 import { CartProvider } from '@/components/cart/CartProvider';
+import { UserSessionProvider } from '@/components/auth/UserSessionProvider';
 import { NavigationProgressBar } from '@/components/ui/NavigationProgressBar';
 import { NetworkStatusNotifier } from '@/components/ui/NetworkStatusNotifier';
 import { InitialSplashScreen } from '@/components/ui/InitialSplashScreen';
@@ -47,7 +48,9 @@ export default function RootLayout({
           <NavigationProgressBar />
         </Suspense>
         <NetworkStatusNotifier />
-        <CartProvider>{children}</CartProvider>
+        <UserSessionProvider>
+          <CartProvider>{children}</CartProvider>
+        </UserSessionProvider>
       </body>
     </html>
   );

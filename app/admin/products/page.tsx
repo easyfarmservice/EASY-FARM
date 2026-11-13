@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { AdminLayout } from '@/components/admin/AdminLayout';
 import {
   Sprout,
@@ -46,6 +45,59 @@ const PRESET_VEGETABLE_IMAGES = [
   { name: 'Broccoli', url: '/images/vegetables/broccoli.jpg' },
   { name: 'Green Peas', url: '/images/vegetables/green-peas.jpg' },
 ];
+
+function AdminProductImage({
+  src,
+  alt,
+  size = 48,
+}: {
+  src?: string;
+  alt: string;
+  size?: number;
+}) {
+  const fallback = '/images/vegetables/tomato.jpg';
+  const initial = src && src.trim().length > 0 ? src.trim() : fallback;
+  const [currentSrc, setCurrentSrc] = useState(initial);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    const valid = src && src.trim().length > 0 ? src.trim() : fallback;
+    setCurrentSrc(valid);
+    setHasError(false);
+  }, [src]);
+
+  if (hasError) {
+    return (
+      <div
+        className="rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-700"
+        style={{ width: size, height: size }}
+      >
+        <Sprout className="w-5 h-5 text-emerald-700" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-xl bg-slate-100 border border-slate-200 overflow-hidden relative shrink-0 shadow-2xs"
+      style={{ width: size, height: size }}
+    >
+      <img
+        src={currentSrc}
+        alt={alt}
+        loading="lazy"
+        className="w-full h-full object-cover"
+        onError={() => {
+          if (currentSrc !== fallback) {
+            setCurrentSrc(fallback);
+          } else {
+            setHasError(true);
+          }
+        }}
+      />
+    </div>
+  );
+}
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -557,19 +609,7 @@ export default function AdminProductsPage() {
                         {/* ITEM & PICTURE */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden relative shrink-0 shadow-2xs">
-                              <Image
-                                src={displayImg}
-                                alt={p.name}
-                                fill
-                                sizes="48px"
-                                className="object-cover"
-                                onError={(e: any) => {
-                                  // Fallback to placeholder if broken link
-                                  e.currentTarget.src = fallbackImg;
-                                }}
-                              />
-                            </div>
+                            <AdminProductImage src={p.image_url} alt={p.name} size={48} />
                             <div className="min-w-0">
                               <p className="font-bold text-slate-900 text-sm truncate">{p.name}</p>
                               {p.description && (
@@ -716,14 +756,13 @@ export default function AdminProductsPage() {
                     {/* Live Thumbnail Preview */}
                     <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white border border-slate-200 overflow-hidden relative shrink-0 shadow-sm flex items-center justify-center">
                       {imageUrl ? (
-                        <Image
+                        <img
                           src={imageUrl}
                           alt="Product preview"
-                          fill
-                          sizes="96px"
-                          className="object-cover"
-                          onError={(e: any) => {
-                            e.currentTarget.src = '/images/vegetables/tomato.jpg';
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).srcset = '';
+                            (e.currentTarget as HTMLImageElement).src = '/images/vegetables/tomato.jpg';
                           }}
                         />
                       ) : (
@@ -803,12 +842,11 @@ export default function AdminProductsPage() {
                                 }`}
                                 title={preset.name}
                               >
-                                <Image
+                                <img
                                   src={preset.url}
                                   alt={preset.name}
-                                  fill
-                                  sizes="36px"
-                                  className="object-cover"
+                                  loading="lazy"
+                                  className="w-full h-full object-cover"
                                 />
                                 {imageUrl === preset.url && (
                                   <div className="absolute inset-0 bg-emerald-900/40 flex items-center justify-center">

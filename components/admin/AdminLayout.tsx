@@ -237,6 +237,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <Link
               key={href}
               href={href}
+              prefetch={true}
               onClick={() => setMobileNavOpen(false)}
               className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl hover:bg-emerald-900/60 text-emerald-100/80 text-xs font-semibold transition"
             >
@@ -265,6 +266,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
+                prefetch={true}
                 className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl hover:bg-emerald-900/60 text-emerald-100/80 transition"
               >
                 <Icon className="w-4 h-4 text-emerald-400" />

@@ -29,6 +29,7 @@ export interface SelectedLocation {
   lat?: number;
   lng?: number;
   isServiceable?: boolean;
+  nearText?: string;
   setAt: number;
 }
 
@@ -49,6 +50,7 @@ export async function fetchDeviceLocation(): Promise<SelectedLocation | null> {
           let zoneName = 'Ghatkesar & Pocharam, Hyderabad (Active)';
           let areaName = 'Ghatkesar & Pocharam, Hyderabad (Active)';
           let pincode = '500088';
+          let nearText = 'Near Pocharam & Ghatkesar';
 
           try {
             const checkRes = await fetch('/api/delivery/check', {
@@ -66,7 +68,7 @@ export async function fetchDeviceLocation(): Promise<SelectedLocation | null> {
             console.warn('Check API fallback during auto-fetch:', e);
           }
 
-          // 2. Reverse geocode for accurate apartment / society name
+          // 2. Reverse geocode for exact place, locality, pincode, and nearText
           try {
             const geoRes = await fetch('/api/delivery/reverse-geocode', {
               method: 'POST',
@@ -85,19 +87,27 @@ export async function fetchDeviceLocation(): Promise<SelectedLocation | null> {
                 if (geo.pincode) {
                   pincode = geo.pincode;
                 }
+                if (geo.nearText) {
+                  nearText = geo.nearText;
+                }
               }
             }
           } catch (e) {
             console.warn('Reverse geocode fallback during auto-fetch:', e);
           }
 
+          if (!nearText || nearText === 'Near Pinned Location') {
+            nearText = areaName.startsWith('Near ') ? areaName : `Near ${areaName}`;
+          }
+
           const loc: SelectedLocation = {
-            community: areaName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-            area: zoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
+            community: areaName || 'Singapore Township, Pocharam',
+            area: zoneName || 'Ghatkesar mandal',
             pincode,
             lat: latitude,
             lng: longitude,
             isServiceable,
+            nearText,
             setAt: Date.now(),
           };
 
@@ -167,22 +177,33 @@ export function LocationPickerModal({ onClose, onSelect }: {
       community: community.name,
       area: community.area,
       pincode: community.pincode,
+      lat: community.lat,
+      lng: community.lng,
+      isServiceable: true,
+      nearText: `Near ${community.name}`,
       setAt: Date.now(),
     };
     saveLocation(loc);
+    window.dispatchEvent(new CustomEvent('easyfarm-location-changed', { detail: loc }));
     onSelect?.(loc);
     onClose?.();
   };
 
   const handleConfirmMapLocation = () => {
     if (!selectedMapLoc) return;
+    const cleanPlace = selectedMapLoc.placeName || selectedMapLoc.communityName || selectedMapLoc.areaName || 'Singapore Township, Pocharam';
     const loc: SelectedLocation = {
-      community: selectedMapLoc.placeName || selectedMapLoc.communityName || selectedMapLoc.areaName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-      area: selectedMapLoc.locality || selectedMapLoc.zoneName || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-      pincode: selectedMapLoc.pincode || '501301',
+      community: cleanPlace,
+      area: selectedMapLoc.locality || selectedMapLoc.zoneName || 'Ghatkesar mandal',
+      pincode: selectedMapLoc.pincode || '500088',
+      lat: selectedMapLoc.lat,
+      lng: selectedMapLoc.lng,
+      isServiceable: selectedMapLoc.isServiceable,
+      nearText: cleanPlace.startsWith('Near ') ? cleanPlace : `Near ${cleanPlace}`,
       setAt: Date.now(),
     };
     saveLocation(loc);
+    window.dispatchEvent(new CustomEvent('easyfarm-location-changed', { detail: loc }));
     onSelect?.(loc);
     onClose?.();
   };
@@ -198,21 +219,39 @@ export function LocationPickerModal({ onClose, onSelect }: {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          const res = await fetch('/api/delivery/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-            }),
-          });
-          const data = await res.json();
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
 
-          if (data.available) {
+          const [checkRes, geoRes] = await Promise.allSettled([
+            fetch('/api/delivery/check', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ latitude: lat, longitude: lng }),
+            }).then((r) => r.json()),
+            fetch('/api/delivery/reverse-geocode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ latitude: lat, longitude: lng }),
+            }).then((r) => r.json()),
+          ]);
+
+          const checkData = checkRes.status === 'fulfilled' ? checkRes.value : null;
+          const geoData = geoRes.status === 'fulfilled' ? geoRes.value : null;
+
+          if (checkData && checkData.available) {
+            const detectedPlace = geoData?.placeName || checkData.area_name || 'Singapore Township, Pocharam';
+            const detectedMandal = geoData?.locality || checkData.zone_name || 'Ghatkesar mandal';
+            const detectedPin = geoData?.pincode || '500088';
+            const nearText = geoData?.nearText || (detectedPlace.startsWith('Near ') ? detectedPlace : `Near ${detectedPlace}`);
+
             const loc: SelectedLocation = {
-              community: data.area_name || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-              area: data.zone_name || 'Ghatkesar & Pocharam, Hyderabad (Active)',
-              pincode: '500088',
+              community: detectedPlace,
+              area: detectedMandal,
+              pincode: detectedPin,
+              lat,
+              lng,
+              isServiceable: true,
+              nearText,
               setAt: Date.now(),
             };
             setDetected(loc);
@@ -237,6 +276,7 @@ export function LocationPickerModal({ onClose, onSelect }: {
   const confirmDetected = () => {
     if (detected) {
       saveLocation(detected);
+      window.dispatchEvent(new CustomEvent('easyfarm-location-changed', { detail: detected }));
       onSelect?.(detected);
       onClose?.();
     }
@@ -490,9 +530,13 @@ export function LocationPickerTrigger({
     return () => window.removeEventListener('easyfarm-location-changed', handleLocationChange);
   }, []);
 
-  const displayLocationText = location
-    ? (location.community || location.area || 'Ghatkesar & Pocharam, Hyderabad (Active)')
-    : 'Ghatkesar & Pocharam, Hyderabad (Active)';
+  let displayLocationText = 'Near Pocharam & Ghatkesar';
+  if (location) {
+    const raw = location.nearText || location.community || location.area || '';
+    if (raw) {
+      displayLocationText = raw.startsWith('Near ') ? raw : `Near ${raw}`;
+    }
+  }
 
   if (variant === 'bar') {
     return (

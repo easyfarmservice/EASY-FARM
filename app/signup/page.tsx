@@ -295,12 +295,9 @@ function SignupFormContent() {
         targetUrl = nextParam;
       }
 
-      // Hard navigation ensures HTTP cookies are sent in request headers to SSR/middleware proxy
-      if (typeof window !== 'undefined') {
-        window.location.href = targetUrl;
-      } else {
-        router.push(targetUrl);
-      }
+      // Client-side navigation with server refresh
+      router.refresh();
+      router.push(targetUrl);
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
     } finally {

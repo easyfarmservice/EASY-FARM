@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { DeliveryCheckResult } from '@/types/database';
+import { SERVICEABLE_PINCODES } from '@/lib/constants';
 
 export class DeliveryService {
   /**
@@ -115,6 +116,20 @@ export class DeliveryService {
             delivery_promise: zone.delivery_promise || 'Sunday by 6 PM',
           };
         }
+      }
+
+      // Check fallback against SERVICEABLE_PINCODES for the active delivery corridor
+      const cleanPin = pincode.trim();
+      if (SERVICEABLE_PINCODES.includes(cleanPin)) {
+        return {
+          available: true,
+          zone_name: 'Ghatkesar & Pocharam',
+          area_name: 'Extended Corridor (Active)',
+          delivery_fee: 0,
+          minimum_order: 250,
+          delivery_day: 'Sunday',
+          delivery_promise: 'Sunday by 6 PM',
+        };
       }
 
       return {
