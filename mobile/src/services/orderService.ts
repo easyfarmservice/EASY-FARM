@@ -246,43 +246,105 @@ export async function getCustomerOrders(email?: string): Promise<CustomerOrder[]
           parsedNotes = typeof o.notes === 'string' ? JSON.parse(o.notes) : o.notes || {};
         } catch {}
 
-        const items: OrderItemSnapshot[] = (o.order_items || []).map((it: any) => ({
-          id: it.id,
-          name: it.basket_name,
-          quantity: Number(it.quantity) || 1,
-          unit: 'kg',
-          price: Number(it.unit_price) || 0,
-          total: Number(it.total_price) || 0,
-        }));
+        let items: OrderItemSnapshot[] = [];
+
+        // Check if rich item snapshots with customized crops are saved in notes
+        if (Array.isArray(parsedNotes.items) && parsedNotes.items.length > 0) {
+          items = parsedNotes.items.map((it: any, idx: number) => ({
+            id: it.id || `item-${idx}`,
+            name: it.name || it.basketName || 'Farm Harvest Box',
+            quantity: Number(it.quantity) || 1,
+            unit: it.unit || 'box',
+            price: Number(it.unitPrice || it.price) || 0,
+            total: Number(it.totalPrice || it.total) || (Number(it.unitPrice || it.price || 0) * (Number(it.quantity) || 1)),
+            image_url: it.image_url || '',
+            customizedItems: Array.isArray(it.customizedItems) ? it.customizedItems : [],
+          }));
+        } else if (Array.isArray(o.order_items) && o.order_items.length > 0) {
+          items = o.order_items.map((it: any) => ({
+            id: it.id,
+            name: it.basket_name,
+            quantity: Number(it.quantity) || 1,
+            unit: 'box',
+            price: Number(it.unit_price) || 0,
+            total: Number(it.total_price) || 0,
+            customizedItems: [],
+          }));
+        } else {
+          items = [
+            {
+              id: 'item-1',
+              name: 'Farm Harvest Box',
+              quantity: 1,
+              unit: 'box',
+              price: Number(o.total),
+              total: Number(o.total),
+              customizedItems: [],
+            },
+          ];
+        }
+
+        const rawAddr = parsedNotes.address || {};
+        const flatNo = parsedNotes.flatNo || rawAddr.flatNo || '302';
+        const apartment = parsedNotes.apartment || rawAddr.apartment || 'Tower A';
+        const locality = parsedNotes.locality || rawAddr.locality || 'Singapore Township';
+        const pincode = parsedNotes.pincode || rawAddr.pincode || '500088';
+        const fullAddress =
+          parsedNotes.fullAddress ||
+          rawAddr.fullAddress ||
+          [flatNo ? 'Flat ' + flatNo : '', apartment, locality, pincode ? 'PIN ' + pincode : '']
+            .filter(Boolean)
+            .join(', ');
+
+        // Format delivery date nicely
+        let formattedDeliveryDate = 'Coming Sunday';
+        if (o.delivery_date) {
+          try {
+            const d = new Date(o.delivery_date);
+            if (!isNaN(d.getTime())) {
+              formattedDeliveryDate = d.toLocaleDateString('en-IN', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              });
+            } else {
+              formattedDeliveryDate = o.delivery_date;
+            }
+          } catch {
+            formattedDeliveryDate = o.delivery_date;
+          }
+        }
 
         return {
           id: o.id,
           orderNumber: parsedNotes.orderNumber || `EF-${o.id.slice(0, 8).toUpperCase()}`,
           createdAt: o.created_at,
-          deliveryDate: o.delivery_date || 'Coming Sunday',
+          deliveryDate: formattedDeliveryDate,
           deliverySlot: 'Sunday Morning (7:00 AM – 12:00 PM)',
           status: o.status || 'confirmed',
-          items: items.length > 0 ? items : [{ id: 'item-1', name: 'Farm Harvest Box', quantity: 1, unit: 'box', price: Number(o.total), total: Number(o.total) }],
+          items,
           subtotal: Number(o.subtotal) || Number(o.total),
           deliveryFee: Number(o.delivery_fee) || 0,
+          couponDiscount: Number(parsedNotes.couponDiscount) || 0,
+          couponCode: parsedNotes.couponCode || undefined,
           total: Number(o.total),
-          paymentMethod: parsedNotes.paymentMethod || 'COD',
-          paymentStatus: o.status === 'confirmed' ? 'paid' : 'pending',
-          address: parsedNotes.address || {
-            id: 'addr-default',
-            label: 'Home',
-            flatNo: '302',
-            apartment: 'Singapore Township',
-            locality: 'Ghatkesar',
-            pincode: '500088',
-            fullAddress: 'Singapore Township, Ghatkesar, 500088',
-            latitude: 17.4475,
-            longitude: 78.6534,
+          paymentMethod: parsedNotes.paymentMethod || 'UPI',
+          paymentStatus: o.status === 'confirmed' || o.status === 'delivered' ? 'paid' : 'pending',
+          address: {
+            id: rawAddr.id || 'addr-default',
+            label: rawAddr.label || 'Home',
+            flatNo,
+            apartment,
+            locality,
+            pincode,
+            fullAddress,
+            latitude: rawAddr.latitude || 17.4475,
+            longitude: rawAddr.longitude || 78.6534,
             isServiceable: true,
           },
-          customerName: parsedNotes.customerName || 'Easy Farm Customer',
+          customerName: parsedNotes.customerName || 'Valued Customer',
           customerPhone: parsedNotes.customerPhone || '',
-          deliveryOtp: parsedNotes.deliveryOtp || undefined,
+          deliveryOtp: parsedNotes.deliveryOtp || o.delivery_otp || undefined,
         };
       });
 

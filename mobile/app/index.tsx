@@ -74,6 +74,7 @@ import { saveAddressToSupabase } from '../src/services/addressStorage';
 import { getUserCurrentLocation } from '../src/services/locationService';
 import { fetchCustomerCoins, computeWeeklyStreak } from '../src/services/easyCoinsService';
 import { WeeklyStreakView } from '../src/components/WeeklyStreakView';
+import { OrderDetailModal } from '../src/components/OrderDetailModal';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
@@ -207,6 +208,13 @@ function MainAppFlow() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'delivered'>('all');
   const [expandedOrders, setExpandedOrders] = useState<{ [orderId: string]: boolean }>({});
+  const [selectedDetailOrder, setSelectedDetailOrder] = useState<CustomerOrder | null>(null);
+  const [showOrderDetailModal, setShowOrderDetailModal] = useState(false);
+
+  const openOrderDetail = (order: CustomerOrder) => {
+    setSelectedDetailOrder(order);
+    setShowOrderDetailModal(true);
+  };
 
   const toggleExpandOrder = (orderId: string) => {
     setExpandedOrders((prev) => ({
@@ -1638,7 +1646,11 @@ function MainAppFlow() {
 
           {/* Active Sunday Harvest Live Tracker Card */}
           {activeSundayOrder && orderFilter !== 'delivered' && (
-            <View style={styles.activeHarvestHeroCard}>
+            <TouchableOpacity
+              style={styles.activeHarvestHeroCard}
+              onPress={() => openOrderDetail(activeSundayOrder)}
+              activeOpacity={0.9}
+            >
               <View style={styles.activeHarvestHeader}>
                 <View style={styles.activeHarvestBadge}>
                   <Sparkles size={13} color="#065f46" />
@@ -1723,7 +1735,12 @@ function MainAppFlow() {
                   </View>
                 </View>
               </View>
-            </View>
+
+              <View style={styles.activeHarvestTapCtaRow}>
+                <Text style={styles.activeHarvestTapCtaText}>Tap for full live tracking & farm details</Text>
+                <ChevronRight size={14} color="#065f46" />
+              </View>
+            </TouchableOpacity>
           )}
 
           {isLoadingOrders ? (
@@ -1756,198 +1773,102 @@ function MainAppFlow() {
             </View>
           ) : (
             filteredOrders.map((ord) => {
-              const isExpanded = Boolean(expandedOrders[ord.id]);
               const customCropItems = ord.items.flatMap((i) => i.customizedItems || []);
               const hasCustomCrops = customCropItems.length > 0;
+              const cropNamesPreview = hasCustomCrops
+                ? customCropItems.map((c) => c.name).filter(Boolean).slice(0, 4).join(', ') + (customCropItems.length > 4 ? ` +${customCropItems.length - 4} more` : '')
+                : ord.items.map((i) => i.name).slice(0, 2).join(', ');
+
+              const statusColor =
+                ord.status === 'delivered'
+                  ? { bg: '#f1f5f9', text: '#64748b', border: '#e2e8f0', label: 'Delivered' }
+                  : ord.status === 'out_for_delivery'
+                  ? { bg: '#ecfdf5', text: '#059669', border: '#a7f3d0', label: '🚚 Out for Delivery' }
+                  : ord.status === 'packed'
+                  ? { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0', label: '📦 Packed & Ready' }
+                  : ord.status === 'harvested'
+                  ? { bg: '#f0fdfa', text: '#0d9488', border: '#99f6e4', label: '🌿 Harvested' }
+                  : { bg: '#ecfdf5', text: '#047857', border: '#a7f3d0', label: '✓ Confirmed for Sunday' };
 
               return (
-                <View key={ord.id} style={styles.modernOrderCard}>
-                  {/* Order Top Bar */}
-                  <View style={styles.modernOrderTopBar}>
+                <TouchableOpacity
+                  key={ord.id}
+                  style={styles.cleanOrderCard}
+                  onPress={() => openOrderDetail(ord)}
+                  activeOpacity={0.88}
+                >
+                  {/* Card Header: Order # + Status Pill */}
+                  <View style={styles.cleanOrderTopBar}>
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={styles.modernOrderNum}>{ord.orderNumber}</Text>
-                        <View
-                          style={[
-                            styles.modernOrderStatusPill,
-                            ord.status === 'delivered'
-                              ? { backgroundColor: '#f1f5f9' }
-                              : { backgroundColor: '#ecfdf5' },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.modernOrderStatusText,
-                              ord.status === 'delivered' ? { color: '#64748b' } : { color: '#059669' },
-                            ]}
-                          >
-                            {ord.status === 'confirmed'
-                              ? '✓ Reserved for Sunday'
-                              : ord.status === 'out_for_delivery'
-                              ? '🚚 Out for Delivery'
-                              : ord.status === 'delivered'
-                              ? 'Delivered'
-                              : ord.status}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.modernOrderDateText}>
-                        Harvest: {ord.deliveryDate} • {ord.deliverySlot}
-                      </Text>
-                    </View>
-                    <Text style={styles.modernOrderPrice}>₹{ord.total}</Text>
-                  </View>
-
-                  {/* Out for Delivery Handover OTP Banner */}
-                  {ord.status === 'out_for_delivery' && (
-                    <View style={styles.modernOtpBanner}>
-                      <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={styles.modernOtpTag}>🚚 HANDOVER OTP</Text>
-                        <Text style={styles.modernOtpInstruction}>
-                          {ord.deliveryOtp
-                            ? 'Share with delivery partner upon arrival'
-                            : 'OTP sent to your registered email'}
+                      <Text style={styles.cleanOrderNum}>Order #{ord.orderNumber}</Text>
+                      <View style={styles.cleanOrderDateRow}>
+                        <Clock size={11} color="#64748b" />
+                        <Text style={styles.cleanOrderDateSub}>
+                          {ord.deliveryDate} • {ord.deliverySlot}
                         </Text>
                       </View>
-                      {ord.deliveryOtp && (
-                        <View style={styles.modernOtpCodeBox}>
-                          <Text style={styles.modernOtpCodeText}>{ord.deliveryOtp}</Text>
+                    </View>
+
+                    <View style={[styles.cleanStatusPill, { backgroundColor: statusColor.bg, borderColor: statusColor.border }]}>
+                      <Text style={[styles.cleanStatusPillText, { color: statusColor.text }]}>
+                        {statusColor.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Out for Delivery Quick OTP Callout */}
+                  {ord.status === 'out_for_delivery' && (
+                    <View style={styles.cleanOtpCallout}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cleanOtpCalloutTitle}>🚚 DELIVERY IN PROGRESS</Text>
+                        <Text style={styles.cleanOtpCalloutSub}>
+                          {ord.deliveryOtp ? 'Handover OTP ready for driver' : 'OTP dispatched to registered email'}
+                        </Text>
+                      </View>
+                      {ord.deliveryOtp ? (
+                        <View style={styles.cleanOtpCalloutBadge}>
+                          <Text style={styles.cleanOtpCalloutBadgeText}>{ord.deliveryOtp}</Text>
                         </View>
-                      )}
+                      ) : null}
                     </View>
                   )}
 
-                  {/* Delivery Location Preview */}
-                  <View style={styles.modernOrderLocRow}>
-                    <MapPin size={14} color="#065f46" />
-                    <Text style={styles.modernOrderLocText} numberOfLines={1}>
-                      {ord.address?.flatNo ? `Flat ${ord.address.flatNo}, ` : ''}
-                      {ord.address?.apartment || ord.address?.locality || 'Doorstep Delivery, Pocharam'}
-                    </Text>
-                  </View>
-
-                  {/* Crops & Basket Content */}
-                  <View style={styles.modernOrderItemsWrap}>
-                    <View style={styles.modernOrderItemsHeader}>
-                      <Text style={styles.modernOrderItemsCount}>
-                        🧺 {ord.items.length} Farm Box {hasCustomCrops ? `(${customCropItems.length} fresh crops)` : ''}
-                      </Text>
-                      {(hasCustomCrops || ord.items.length > 0) && (
-                        <TouchableOpacity
-                          onPress={() => toggleExpandOrder(ord.id)}
-                          style={styles.expandToggleBtn}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.expandToggleText}>
-                            {isExpanded ? 'Hide Crops' : 'View Crops'}
-                          </Text>
-                          {isExpanded ? (
-                            <ChevronUp size={14} color="#065f46" />
-                          ) : (
-                            <ChevronDown size={14} color="#065f46" />
-                          )}
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    {/* Main Boxes Summary */}
-                    {ord.items.map((it, idx) => (
-                      <View key={it.id || idx} style={styles.orderItemRow}>
-                        <View style={styles.orderItemDot} />
-                        <Text style={styles.orderItemName} numberOfLines={1}>
-                          {it.name}
+                  {/* Order Content Summary */}
+                  <View style={styles.cleanOrderInfoBlock}>
+                    <View style={styles.cleanInfoRow}>
+                      <Package size={13} color="#065f46" />
+                      <Text style={styles.cleanInfoText} numberOfLines={1}>
+                        <Text style={{ fontWeight: '700', color: '#1e293b' }}>
+                          {ord.items.length} {ord.items.length === 1 ? 'Farm Box' : 'Farm Boxes'}
                         </Text>
-                        <Text style={styles.orderItemQty}>x{it.quantity || 1}</Text>
-                        <Text style={styles.orderItemPrice}>₹{it.total || it.price}</Text>
-                      </View>
-                    ))}
-
-                    {/* Expanded Custom Vegetable Breakdown */}
-                    {isExpanded && hasCustomCrops && (
-                      <View style={styles.expandedCropsBox}>
-                        <Text style={styles.expandedCropsTitle}>VEGETABLES IN THIS HARVEST BOX:</Text>
-                        {customCropItems.map((crop: any, cIdx: number) => (
-                          <View key={crop.productId || crop.id || cIdx} style={styles.cropSubRow}>
-                            <Text style={styles.cropSubName}>🌱 {crop.name}</Text>
-                            <Text style={styles.cropSubWeight}>{crop.selectedWeight || crop.quantity || 'Pack'}</Text>
-                            <Text style={styles.cropSubPrice}>₹{crop.price || 0}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Payment & Bill Summary */}
-                  <View style={styles.modernOrderBillRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <View style={styles.paidBadge}>
-                        <Text style={styles.paidBadgeText}>✓ {ord.paymentStatus.toUpperCase()}</Text>
-                      </View>
-                      <Text style={styles.paidMethodText}>via {ord.paymentMethod}</Text>
+                        {cropNamesPreview ? ` • ${cropNamesPreview}` : ''}
+                      </Text>
                     </View>
-                    <Text style={styles.freeDeliveryBadge}>FREE Sunday Delivery</Text>
+
+                    <View style={styles.cleanInfoRow}>
+                      <MapPin size={13} color="#065f46" />
+                      <Text style={styles.cleanInfoText} numberOfLines={1}>
+                        {ord.address?.flatNo ? `Flat ${ord.address.flatNo}, ` : ''}
+                        {ord.address?.apartment || ord.address?.locality || 'Pocharam / Ghatkesar'}
+                      </Text>
+                    </View>
                   </View>
 
-                  {/* Quick Action Footer Buttons */}
-                  <View style={styles.modernOrderActionsRow}>
-                    <TouchableOpacity
-                      style={styles.orderActionSecondaryBtn}
-                      onPress={() => {
-                        Linking.openURL(
-                          `https://wa.me/919876543210?text=Hi%20Easy%20Farm,%20I%20am%20checking%20status%20for%20order%20%23${ord.orderNumber}`
-                        );
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <MessageSquare size={13} color="#065f46" />
-                      <Text style={styles.orderActionSecondaryText}>WhatsApp Status</Text>
-                    </TouchableOpacity>
+                  {/* Card Bottom Bar: Amount + Track & Details CTA */}
+                  <View style={styles.cleanOrderBottomBar}>
+                    <View>
+                      <Text style={styles.cleanOrderPrice}>₹{ord.total}</Text>
+                      <Text style={styles.cleanOrderPaySub}>
+                        ✓ Paid via {ord.paymentMethod}
+                      </Text>
+                    </View>
 
-                    <TouchableOpacity
-                      style={styles.orderActionSecondaryBtn}
-                      onPress={() => setShowRefundsModal(true)}
-                      activeOpacity={0.7}
-                    >
-                      <ShieldCheck size={13} color="#065f46" />
-                      <Text style={styles.orderActionSecondaryText}>Quality Help</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.orderActionPrimaryBtn}
-                      onPress={() => {
-                        // Reorder: add box items into cart
-                        ord.items.forEach((it) => {
-                          addToCart(
-                            {
-                              id: it.id,
-                              name: it.name,
-                              slug: it.name.toLowerCase().replace(/\s+/g, '-'),
-                              price: it.price,
-                              market_price: Math.round(it.price * 1.25),
-                              unit: it.unit || 'box',
-                              image_url: it.image_url || '',
-                              category: 'Farm Boxes',
-                              customizedItems: it.customizedItems,
-                            },
-                            it.quantity || 1
-                          );
-                        });
-                        Alert.alert(
-                          'Items Added to Cart',
-                          `Added items from Order #${ord.orderNumber} to your cart.`,
-                          [
-                            { text: 'Go to Cart', onPress: () => setShowCheckout(true) },
-                            { text: 'Shop More', onPress: () => setMainTab('shop') },
-                          ]
-                        );
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <RotateCcw size={12} color="#ffffff" />
-                      <Text style={styles.orderActionPrimaryText}>Reorder</Text>
-                    </TouchableOpacity>
+                    <View style={styles.trackDetailsBtn}>
+                      <Text style={styles.trackDetailsBtnText}>Track & Details</Text>
+                      <ChevronRight size={14} color="#065f46" />
+                    </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -2938,6 +2859,40 @@ function MainAppFlow() {
           </View>
         </View>
       </Modal>
+
+      {/* ── ORDER DETAIL & LIVE TRACKING MODAL ── */}
+      <OrderDetailModal
+        visible={showOrderDetailModal}
+        order={selectedDetailOrder}
+        onClose={() => setShowOrderDetailModal(false)}
+        onReorder={(reorderOrder) => {
+          setShowOrderDetailModal(false);
+          reorderOrder.items.forEach((it) => {
+            addToCart(
+              {
+                id: it.id,
+                name: it.name,
+                slug: it.name.toLowerCase().replace(/\s+/g, '-'),
+                price: it.price,
+                market_price: Math.round(it.price * 1.25),
+                unit: it.unit || 'box',
+                image_url: it.image_url || '',
+                category: 'Farm Boxes',
+                customizedItems: it.customizedItems,
+              },
+              it.quantity || 1
+            );
+          });
+          Alert.alert(
+            'Items Added to Cart',
+            `Added items from Order #${reorderOrder.orderNumber} to your cart.`,
+            [
+              { text: 'Go to Cart', onPress: () => setShowCheckout(true) },
+              { text: 'Shop More', onPress: () => setMainTab('shop') },
+            ]
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -4347,6 +4302,156 @@ const styles = StyleSheet.create({
   },
   emptyNextSundayText: {
     fontSize: 11,
+    fontWeight: '800',
+    color: '#065f46',
+  },
+  /* Clean Streamlined Order Cards */
+  cleanOrderCard: {
+    backgroundColor: '#ffffff',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cleanOrderTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  cleanOrderNum: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0f172a',
+    letterSpacing: -0.2,
+  },
+  cleanOrderDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  cleanOrderDateSub: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  cleanStatusPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cleanStatusPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  cleanOtpCallout: {
+    marginTop: 10,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cleanOtpCalloutTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#065f46',
+    letterSpacing: 0.5,
+  },
+  cleanOtpCalloutSub: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 1,
+  },
+  cleanOtpCalloutBadge: {
+    backgroundColor: '#065f46',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  cleanOtpCalloutBadgeText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: 2,
+  },
+  cleanOrderInfoBlock: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: '#f1f5f9',
+    gap: 6,
+  },
+  cleanInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  cleanInfoText: {
+    fontSize: 12,
+    color: '#475569',
+    flex: 1,
+  },
+  cleanOrderBottomBar: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: '#f1f5f9',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cleanOrderPrice: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#065f46',
+  },
+  cleanOrderPaySub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  trackDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  trackDetailsBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#065f46',
+  },
+  activeHarvestTapCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: 'rgba(6, 95, 70, 0.12)',
+  },
+  activeHarvestTapCtaText: {
+    fontSize: 12,
     fontWeight: '800',
     color: '#065f46',
   },
