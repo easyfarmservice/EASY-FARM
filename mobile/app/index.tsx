@@ -1289,11 +1289,13 @@ function MainAppFlow() {
           onPress={() => setCurrentScreen('map_confirm')}
           activeOpacity={0.8}
         >
-          <MapPin size={16} color="#065f46" />
-          <View style={{ marginLeft: 6, flex: 1 }}>
+          <View style={styles.locationPinHalo}>
+            <MapPin size={15} color="#047857" />
+          </View>
+          <View style={{ marginLeft: 8, flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={styles.deliverToTag}>DELIVER TO HOME</Text>
-              <ChevronDown size={11} color="#065f46" />
+              <ChevronDown size={11} color="#047857" />
             </View>
             <Text style={styles.deliverToAddr} numberOfLines={1}>
               {selectedAddress.split(',')[0]}
@@ -1310,36 +1312,49 @@ function MainAppFlow() {
           >
             <Text style={styles.headerCoinsIcon}>🪙</Text>
             <Text style={styles.headerCoinsText}>
-              <Text style={{ fontWeight: '800' }}>{userCoins}</Text> Easy Coins
+              <Text style={{ fontWeight: '800' }}>{userCoins}</Text> Coins
             </Text>
-            <ChevronRight size={13} color="#64748b" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.bellBtn}
-            onPress={() => Alert.alert('Next Delivery', `${sundayInfo.dateString}\nHarvest schedule is active!`)}
+            onPress={() => Alert.alert('Next Sunday Harvest', `${sundayInfo.dateString}\nFresh vegetables harvested Sunday morning for Pocharam & Ghatkesar.`)}
             activeOpacity={0.8}
           >
-            <Bell size={20} color="#0f172a" />
+            <Bell size={18} color="#0f172a" />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* ── SCREEN 8: HOME SCREEN ── */}
       {mainTab === 'home' && (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {/* Hero Banner */}
-          <View style={styles.homeHeroBanner}>
+        <ScrollView style={{ flex: 1, backgroundColor: '#f8faf7' }} showsVerticalScrollIndicator={false}>
+          {/* Enhanced Modern Hero Banner */}
+          <TouchableOpacity
+            style={styles.homeHeroBanner}
+            onPress={() => setMainTab('shop')}
+            activeOpacity={0.92}
+          >
             <View style={styles.heroTextBox}>
+              <View style={styles.heroBadgeRow}>
+                <Sparkles size={11} color="#fef08a" />
+                <Text style={styles.heroBadgeText}>SUNDAY HARVEST • 100% PESTICIDE-FREE</Text>
+              </View>
               <Text style={styles.heroTitle}>Freshness, delivered differently.</Text>
-              <Text style={styles.heroSub}>Your weekly essentials, delivered fresh every Sunday.</Text>
+              <Text style={styles.heroSub}>
+                Farm-picked Sunday morning for Pocharam & Ghatkesar.
+              </Text>
+              <View style={styles.heroCtaPill}>
+                <Text style={styles.heroCtaPillText}>Build Your Harvest Box</Text>
+                <ChevronRight size={12} color="#064e3b" />
+              </View>
             </View>
             <Image
               source={require('../assets/hero-vegetables.png')}
               style={styles.heroBannerImg}
               resizeMode="contain"
             />
-          </View>
+          </TouchableOpacity>
 
           {/* Dynamic Baskets Section */}
           <View style={styles.sectionHeaderRow}>
@@ -1562,23 +1577,6 @@ function MainAppFlow() {
 
           <View style={{ height: 110 }} />
         </ScrollView>
-      )}
-
-      {/* Floating Cart Dock for Home Tab */}
-      {mainTab === 'home' && totalItems > 0 && (
-        <View style={styles.floatingCartBarWrap}>
-          <TouchableOpacity
-            style={styles.floatingCartBar}
-            onPress={() => setShowCheckout(true)}
-            activeOpacity={0.9}
-          >
-            <ShoppingBag size={18} color="#ffffff" />
-            <Text style={styles.floatingCartText}>
-              View Cart • ₹{subtotal} • {totalItems} items
-            </Text>
-            <ChevronRight size={18} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
       )}
 
       {/* ── SCREEN 9: SHOP / PRODUCT CATALOG & AUTOMATIC CUSTOM BOX BUILDER ── */}
@@ -2122,8 +2120,37 @@ function MainAppFlow() {
             <Text style={styles.appVersionText}>Easy Farm v1.0.0 • Farm to Doorstep in Pocharam & Ghatkesar</Text>
           </View>
 
-          <View style={{ height: 100 }} />
+          <View style={{ height: 110 }} />
         </ScrollView>
+      )}
+
+      {/* ── GLOBAL FLOATING QUICK-CART DOCK (Zepto / Blinkit Style) ── */}
+      {totalItems > 0 && !showCheckout && (
+        <View style={styles.globalFloatingCartWrap}>
+          <TouchableOpacity
+            style={styles.globalFloatingCartBar}
+            onPress={() => setShowCheckout(true)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.floatingCartLeft}>
+              <View style={styles.floatingCartBagIconWrap}>
+                <ShoppingBag size={17} color="#ffffff" />
+                <View style={styles.floatingCartBadge}>
+                  <Text style={styles.floatingCartBadgeText}>{totalItems}</Text>
+                </View>
+              </View>
+              <View>
+                <Text style={styles.floatingCartTotal}>₹{subtotal}</Text>
+                <Text style={styles.floatingCartSub}>Sunday Delivery FREE</Text>
+              </View>
+            </View>
+
+            <View style={styles.floatingCartRight}>
+              <Text style={styles.floatingCartCtaText}>View Cart</Text>
+              <ChevronRight size={16} color="#ffffff" />
+            </View>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* ── BOTTOM NAVIGATION ── */}
@@ -2133,7 +2160,9 @@ function MainAppFlow() {
           onPress={() => setMainTab('home')}
           activeOpacity={0.8}
         >
-          <Home size={22} color={mainTab === 'home' ? '#065f46' : '#94a3b8'} />
+          <View style={[styles.navIconWrap, mainTab === 'home' && styles.navIconWrapActive]}>
+            <Home size={20} color={mainTab === 'home' ? '#047857' : '#94a3b8'} />
+          </View>
           <Text style={[styles.navText, mainTab === 'home' && styles.navTextActive]}>Home</Text>
         </TouchableOpacity>
 
@@ -2142,7 +2171,9 @@ function MainAppFlow() {
           onPress={() => setMainTab('shop')}
           activeOpacity={0.8}
         >
-          <ShoppingBag size={22} color={mainTab === 'shop' ? '#065f46' : '#94a3b8'} />
+          <View style={[styles.navIconWrap, mainTab === 'shop' && styles.navIconWrapActive]}>
+            <ShoppingBag size={20} color={mainTab === 'shop' ? '#047857' : '#94a3b8'} />
+          </View>
           <Text style={[styles.navText, mainTab === 'shop' && styles.navTextActive]}>Shop</Text>
         </TouchableOpacity>
 
@@ -2151,7 +2182,9 @@ function MainAppFlow() {
           onPress={() => setMainTab('orders')}
           activeOpacity={0.8}
         >
-          <Package size={22} color={mainTab === 'orders' ? '#065f46' : '#94a3b8'} />
+          <View style={[styles.navIconWrap, mainTab === 'orders' && styles.navIconWrapActive]}>
+            <Package size={20} color={mainTab === 'orders' ? '#047857' : '#94a3b8'} />
+          </View>
           <Text style={[styles.navText, mainTab === 'orders' && styles.navTextActive]}>Orders</Text>
         </TouchableOpacity>
 
@@ -2160,7 +2193,9 @@ function MainAppFlow() {
           onPress={() => setMainTab('rewards')}
           activeOpacity={0.8}
         >
-          <Gift size={22} color={mainTab === 'rewards' ? '#065f46' : '#94a3b8'} />
+          <View style={[styles.navIconWrap, mainTab === 'rewards' && styles.navIconWrapActive]}>
+            <Gift size={20} color={mainTab === 'rewards' ? '#047857' : '#94a3b8'} />
+          </View>
           <Text style={[styles.navText, mainTab === 'rewards' && styles.navTextActive]}>Rewards</Text>
         </TouchableOpacity>
 
@@ -2169,7 +2204,9 @@ function MainAppFlow() {
           onPress={() => setMainTab('profile')}
           activeOpacity={0.8}
         >
-          <User size={22} color={mainTab === 'profile' ? '#065f46' : '#94a3b8'} />
+          <View style={[styles.navIconWrap, mainTab === 'profile' && styles.navIconWrapActive]}>
+            <User size={20} color={mainTab === 'profile' ? '#047857' : '#94a3b8'} />
+          </View>
           <Text style={[styles.navText, mainTab === 'profile' && styles.navTextActive]}>Profile</Text>
         </TouchableOpacity>
       </View>
@@ -3307,28 +3344,39 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   deliverToWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f8faf7',
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     flex: 1,
     marginRight: 8,
   },
+  locationPinHalo: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ecfdf5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   deliverToTag: {
     fontSize: 9.5,
     fontWeight: '800',
-    color: '#065f46',
+    color: '#047857',
     letterSpacing: 0.5,
   },
   deliverToAddr: {
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     color: '#0f172a',
   },
   headerRightActions: {
@@ -3339,16 +3387,16 @@ const styles = StyleSheet.create({
   headerCoinsPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fef9ee',
+    backgroundColor: '#fffbeb',
     borderWidth: 1,
-    borderColor: '#f5e6b3',
+    borderColor: '#fef3c7',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 20,
     gap: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
+    shadowColor: '#f59e0b',
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
     elevation: 1,
   },
   headerCoinsIcon: {
@@ -3356,7 +3404,8 @@ const styles = StyleSheet.create({
   },
   headerCoinsText: {
     fontSize: 11.5,
-    color: '#1e293b',
+    color: '#92400e',
+    fontWeight: '700',
   },
   bellBtn: {
     width: 36,
@@ -3369,38 +3418,81 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
   },
   homeHeroBanner: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 20,
+    backgroundColor: '#064e3b',
+    borderRadius: 24,
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 12,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
     overflow: 'hidden',
     position: 'relative',
-    height: 140,
+    height: 154,
+    shadowColor: '#064e3b',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginBottom: 6,
+  },
+  heroBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#fef08a',
+    letterSpacing: 0.5,
   },
   heroTextBox: {
     padding: 16,
-    width: '65%',
+    width: '68%',
     zIndex: 1,
+    justifyContent: 'center',
+    height: '100%',
   },
   heroTitle: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#0f172a',
-    lineHeight: 22,
+    color: '#ffffff',
+    lineHeight: 21,
+    letterSpacing: -0.2,
   },
   heroSub: {
     fontSize: 11,
-    color: '#64748b',
-    marginTop: 6,
-    lineHeight: 16,
+    color: '#a7f3d0',
+    marginTop: 4,
+    lineHeight: 15,
+  },
+  heroCtaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    gap: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  heroCtaPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#064e3b',
   },
   heroBannerImg: {
     position: 'absolute',
     right: -10,
-    bottom: -10,
+    bottom: -15,
     width: 150,
     height: 150,
   },
@@ -3430,19 +3522,25 @@ const styles = StyleSheet.create({
   basketCard: {
     flex: 1,
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     overflow: 'hidden',
-    paddingBottom: 10,
+    paddingBottom: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   basketImg: {
     width: '100%',
-    height: 90,
+    height: 98,
+    backgroundColor: '#f1f5f9',
   },
   basketTitle: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 13.5,
+    fontWeight: '900',
     color: '#0f172a',
     marginTop: 8,
     paddingHorizontal: 10,
@@ -4752,27 +4850,115 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
+  /* Global Floating Quick-Cart Bar (Zepto / Blinkit style) */
+  globalFloatingCartWrap: {
+    position: 'absolute',
+    bottom: 74,
+    left: 16,
+    right: 16,
+    zIndex: 99,
+  },
+  globalFloatingCartBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#047857',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#047857',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  floatingCartLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  floatingCartBagIconWrap: {
+    position: 'relative',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingCartBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    minWidth: 16,
+    alignItems: 'center',
+  },
+  floatingCartBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  floatingCartTotal: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  floatingCartSub: {
+    color: '#a7f3d0',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  floatingCartRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  floatingCartCtaText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
-    borderColor: '#f1f5f9',
+    borderTopColor: '#f1f5f9',
     paddingVertical: 8,
+    paddingBottom: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 8,
   },
   navItem: {
     alignItems: 'center',
-    minWidth: 50,
+    minWidth: 54,
+  },
+  navIconWrap: {
+    width: 40,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navIconWrapActive: {
+    backgroundColor: '#ecfdf5',
   },
   navText: {
     fontSize: 10,
     fontWeight: '600',
     color: '#94a3b8',
-    marginTop: 3,
+    marginTop: 2,
   },
   navTextActive: {
-    color: '#065f46',
+    color: '#047857',
     fontWeight: '800',
   },
   successBackdrop: {
