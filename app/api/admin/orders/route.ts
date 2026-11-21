@@ -92,22 +92,23 @@ export async function GET(req: NextRequest) {
 
       const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
 
+      let customerEmail =
+        (profile?.email && !profile.email.endsWith('@guest.easyfarm.in') ? profile.email.trim().toLowerCase() : '') ||
+        (meta?.customerEmail ? String(meta.customerEmail).trim().toLowerCase() : '') ||
+        (metaAddr?.customerEmail ? String(metaAddr.customerEmail).trim().toLowerCase() : '') ||
+        '';
+
       let customerName =
+        (profile?.full_name && profile.full_name !== 'Customer' && profile.full_name !== 'Easy Farm Member' ? profile.full_name.trim() : '') ||
         meta?.customerName ||
         metaAddr?.customerName ||
         profile?.full_name ||
         'Customer';
 
       let customerPhone =
+        profile?.phone ||
         meta?.customerPhone ||
         metaAddr?.customerPhone ||
-        profile?.phone ||
-        '';
-
-      let customerEmail =
-        meta?.customerEmail ||
-        metaAddr?.customerEmail ||
-        (profile?.email && !profile.email.endsWith('@guest.easyfarm.in') ? profile.email : '') ||
         '';
 
       // Fallback profile lookup by phone or name if email/phone missing

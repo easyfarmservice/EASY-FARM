@@ -118,10 +118,7 @@ export async function POST(req: NextRequest) {
     }
 
     const customer = await resolveOrderCustomer(supabase, order, meta);
-    const customEmailOverride = String(body.email || body.customer_email || '').trim().toLowerCase();
-    const customerEmail = (customEmailOverride && customEmailOverride.includes('@'))
-      ? customEmailOverride
-      : (customer.customerEmail || '').trim().toLowerCase();
+    const customerEmail = (customer.customerEmail || String(body.email || body.customer_email || '')).trim().toLowerCase();
     const customerPhone = customer.customerPhone;
     const customerName = customer.customerName;
     const deliveryAddress = customer.fullAddress;

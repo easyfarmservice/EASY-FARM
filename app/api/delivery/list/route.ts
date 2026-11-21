@@ -97,9 +97,25 @@ export async function GET(req: NextRequest) {
       const addrObj = Array.isArray(o.customer_addresses) ? o.customer_addresses[0] : o.customer_addresses;
       const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
 
-      const customerName = meta?.customerName || metaAddr?.customerName || profile?.full_name || 'Resident';
-      const customerEmail = meta?.customerEmail || metaAddr?.customerEmail || profile?.email || '';
-      const rawPhone = meta?.customerPhone || metaAddr?.customerPhone || profile?.phone || '';
+      // Customer's registered profile email takes strict priority
+      const customerEmail =
+        (profile?.email && !profile.email.endsWith('@guest.easyfarm.in') ? profile.email.trim().toLowerCase() : '') ||
+        (meta?.customerEmail ? String(meta.customerEmail).trim().toLowerCase() : '') ||
+        (metaAddr?.customerEmail ? String(metaAddr.customerEmail).trim().toLowerCase() : '') ||
+        '';
+
+      const customerName =
+        (profile?.full_name && profile.full_name !== 'Customer' && profile.full_name !== 'Easy Farm Member' ? profile.full_name.trim() : '') ||
+        meta?.customerName ||
+        metaAddr?.customerName ||
+        profile?.full_name ||
+        'Resident';
+
+      const rawPhone =
+        profile?.phone ||
+        meta?.customerPhone ||
+        metaAddr?.customerPhone ||
+        '';
       const maskedPhone = rawPhone.length >= 10
         ? rawPhone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2')
         : (rawPhone || 'Not Provided');

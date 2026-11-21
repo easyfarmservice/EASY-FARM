@@ -101,22 +101,28 @@ export async function resolveOrderCustomer(
 ): Promise<ResolvedCustomerContact> {
   const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
 
-  let customerEmail = (meta?.customerEmail || metaAddr?.customerEmail || '').trim();
-  let customerPhone = (meta?.customerPhone || metaAddr?.customerPhone || '').trim();
-  let customerName = (meta?.customerName || metaAddr?.customerName || '').trim();
-
-  // 1. Relational profiles join (handles object or array)
+  // 1. Relational profiles join - ALWAYS prioritize customer's registered profile credentials
   const profile = Array.isArray(order?.profiles) ? order.profiles[0] : order?.profiles;
-  if (profile) {
-    if (!customerEmail && profile.email) customerEmail = profile.email.trim();
-    if (!customerPhone && profile.phone) customerPhone = profile.phone.trim();
-    if (!customerName && profile.full_name) customerName = profile.full_name.trim();
+
+  let customerEmail = '';
+  let customerPhone = '';
+  let customerName = '';
+
+  // Registered profile email is the primary source of truth
+  if (profile?.email && !profile.email.endsWith('@guest.easyfarm.in')) {
+    customerEmail = profile.email.trim().toLowerCase();
+  }
+  if (profile?.phone) {
+    customerPhone = profile.phone.trim();
+  }
+  if (profile?.full_name && profile.full_name !== 'Customer' && profile.full_name !== 'Easy Farm Member') {
+    customerName = profile.full_name.trim();
   }
 
   const customerId = order?.customer_id || profile?.id;
 
-  // 2. Query profiles table directly if email is missing
-  if ((!customerEmail || !customerName || !customerPhone) && customerId) {
+  // 2. Query profiles table directly if email or phone is missing from join
+  if ((!customerEmail || !customerPhone || !customerName) && customerId) {
     try {
       const { data: prof } = await supabase
         .from('profiles')
@@ -124,10 +130,14 @@ export async function resolveOrderCustomer(
         .eq('id', customerId)
         .maybeSingle();
 
-      if (prof) {
-        if (!customerEmail && prof.email) customerEmail = prof.email.trim();
-        if (!customerPhone && prof.phone) customerPhone = prof.phone.trim();
-        if (!customerName && prof.full_name) customerName = prof.full_name.trim();
+      if (prof?.email && !prof.email.endsWith('@guest.easyfarm.in') && !customerEmail) {
+        customerEmail = prof.email.trim().toLowerCase();
+      }
+      if (!customerPhone && prof?.phone) {
+        customerPhone = prof.phone.trim();
+      }
+      if (!customerName && prof?.full_name && prof.full_name !== 'Customer' && prof.full_name !== 'Easy Farm Member') {
+        customerName = prof.full_name.trim();
       }
     } catch {}
   }
@@ -137,7 +147,7 @@ export async function resolveOrderCustomer(
     try {
       const { data: authData } = await supabase.auth.admin.getUserById(customerId);
       if (authData?.user?.email) {
-        customerEmail = authData.user.email.trim();
+        customerEmail = authData.user.email.trim().toLowerCase();
       }
       if (!customerName && authData?.user?.user_metadata?.full_name) {
         customerName = authData.user.user_metadata.full_name.trim();
@@ -146,6 +156,17 @@ export async function resolveOrderCustomer(
         customerPhone = (authData.user.phone || authData.user.user_metadata.phone).trim();
       }
     } catch {}
+  }
+
+  // 4. Fallback to metadata / notes only if database has no registered contact
+  if (!customerEmail) {
+    customerEmail = (meta?.customerEmail || metaAddr?.customerEmail || '').trim().toLowerCase();
+  }
+  if (!customerPhone) {
+    customerPhone = (meta?.customerPhone || metaAddr?.customerPhone || '').trim();
+  }
+  if (!customerName) {
+    customerName = (meta?.customerName || metaAddr?.customerName || profile?.full_name || 'Resident').trim();
   }
 
   // 4. Resolve delivery address (handles top-level, nested meta.address, customer_addresses relation)

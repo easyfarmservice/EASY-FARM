@@ -143,14 +143,22 @@ export async function POST(req: NextRequest) {
     }
 
     const customer = await resolveOrderCustomer(supabase, order, meta);
-    const customEmailOverride = String(body.email || body.customer_email || '').trim().toLowerCase();
-    const customerEmail = (customEmailOverride && customEmailOverride.includes('@'))
-      ? customEmailOverride
-      : (customer.customerEmail || '').trim().toLowerCase();
+    const customerEmail = (customer.customerEmail || String(body.email || body.customer_email || '')).trim().toLowerCase();
     const customerPhone = customer.customerPhone;
     const customerName = customer.customerName;
     const deliveryAddress = customer.fullAddress;
     const displayOrderId = customer.orderNumber;
+
+    if (!customerEmail && !customerPhone) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'NO_REGISTERED_CONTACT',
+          message: `Order #${rawOrderId} has no registered customer email or phone number.`,
+        },
+        { status: 400 }
+      );
+    }
 
     // 7. Generate new secure 4-digit OTP & Hash
     const newOtp = generateDeliveryOtp();
@@ -238,14 +246,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const isSuccess = Boolean(emailResult.success || smsResult.success);
     const destinationNotice = emailResult.success
-      ? `sent to registered email (${customerEmail})`
+      ? `sent to customer registered email (${customerEmail})`
       : customerEmail
-      ? `generated (Email delivery failed: ${emailResult.error || 'Check sender configuration'})`
+      ? `generated (Email dispatch notice: ${emailResult.error || 'Check sender configuration'})`
       : `sent via SMS`;
 
     return NextResponse.json({
-      success: true,
+      success: isSuccess,
       message: `Fresh 4-digit Handover OTP generated and ${destinationNotice}.`,
       order_id: order.id,
       customer_email: customerEmail,
