@@ -12,10 +12,18 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.easyfarm.customer"
+      "bundleIdentifier": "com.easyfarm.customer",
+      "config": {
+        "googleMapsApiKey": "AIzaSyArhi4VQuGUHPY_cBbf4tOlGW1Q4e8JHLI"
+      }
     },
     "android": {
       "package": "com.easyfarm.customer",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyArhi4VQuGUHPY_cBbf4tOlGW1Q4e8JHLI"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#065f46",
         "foregroundImage": "./assets/android-icon-foreground.png"
@@ -29,15 +37,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-dev-client",
-      [
-        "@maplibre/maplibre-react-native",
-        {
-          "camera": {
-            "maxPitch": 85
-          }
-        }
-      ],
       [
         "expo-location",
         {

@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EmailService } from '@/services/email.service';
-import { setOtp } from '@/lib/otp-store';
+import { generateOtp, setOtp } from '@/lib/otp-store';
 
-// Rate limiting: max 5 requests per 60 seconds per email
-const sendLog = new Map<string, number[]>();
+// Rate limiting: max 10 requests per 60 seconds per email (shared across Next.js route bundles)
+const globalForSendLog = globalThis as unknown as {
+  __easyfarmOtpSendLog?: Map<string, number[]>;
+};
+const sendLog = globalForSendLog.__easyfarmOtpSendLog ?? new Map<string, number[]>();
+globalForSendLog.__easyfarmOtpSendLog = sendLog;
 
 function isRateLimited(email: string): boolean {
   const now = Date.now();
   const windowMs = 60_000;
-  const maxAttempts = 5;
+  const maxAttempts = 10;
   const key = email.toLowerCase();
   const timestamps = (sendLog.get(key) || []).filter((t) => now - t < windowMs);
   if (timestamps.length >= maxAttempts) return true;
@@ -52,72 +56,86 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 1. Check if user exists in profiles or auth
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name, role')
-      .ilike('email', cleanEmail)
-      .maybeSingle();
+    // 1. Resolve display name and check account existence
+    let displayName = name?.trim() || cleanEmail.split('@')[0];
+    let userExists = false;
 
-    let userExists = Boolean(profile);
-    let displayName = profile?.full_name || name?.trim() || cleanEmail.split('@')[0];
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('id, full_name, role')
+        .ilike('email', cleanEmail)
+        .maybeSingle();
 
-    if (!userExists) {
-      const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
-      if (!listErr && users) {
-        const found = users.find((u) => u.email?.toLowerCase() === cleanEmail);
-        if (found) {
-          userExists = true;
-          if (found.user_metadata?.full_name) {
-            displayName = found.user_metadata.full_name;
+      if (profile?.full_name && profile.full_name.trim() !== '' && profile.full_name !== 'Easy Farm Member') {
+        displayName = profile.full_name;
+        userExists = true;
+      } else {
+        const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({
+          page: 1,
+          perPage: 1000,
+        });
+        if (!listErr && usersData?.users) {
+          const found = usersData.users.find((u) => u.email?.toLowerCase() === cleanEmail);
+          if (found) {
+            userExists = true;
+            if (found.user_metadata?.full_name) {
+              displayName = found.user_metadata.full_name;
+            }
           }
         }
       }
+    } catch (lookupErr) {
+      console.warn('[send-otp] Profile/user lookup fallback note:', lookupErr);
     }
 
-    // Login guard: prevent login if account does not exist
+    // Enforce that new users must create an account; direct login for unregistered emails is blocked
     if (type === 'login' && !userExists) {
       return NextResponse.json(
-        { error: `No account found for "${cleanEmail}". Please create an account first.` },
+        {
+          error: 'No registered account found with this email. Please sign up to create your account with your name and phone number.',
+          notRegistered: true,
+        },
         { status: 404 }
       );
     }
 
-    // Signup guard: prevent signup if account already exists
-    if (type === 'signup' && userExists) {
+    if (type === 'signup' && !name?.trim()) {
       return NextResponse.json(
-        { error: `An account with "${cleanEmail}" already exists. Please sign in instead.` },
+        { error: 'Full name is required to create a new customer account.' },
         { status: 400 }
       );
     }
 
-    // 2. Generate authentic Supabase Auth 6-digit OTP token via Admin API
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: cleanEmail,
-      options: {
-        data: {
-          full_name: displayName,
-          phone: phone?.trim() || '',
-          role: 'customer',
+    // 2. Generate authentic Supabase Auth 6-digit OTP token via Admin API (with local fallback)
+    let supabaseOtp: string | undefined;
+    try {
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: cleanEmail,
+        options: {
+          data: {
+            full_name: displayName,
+            phone: phone?.trim() || '',
+            role: 'customer',
+          },
         },
-      },
-    });
+      });
 
-    if (linkError || !linkData?.properties?.email_otp) {
-      console.error('[send-otp] generateLink error:', linkError);
-      return NextResponse.json(
-        { error: linkError?.message || 'Failed to generate verification code.' },
-        { status: 500 }
-      );
+      if (linkError) {
+        console.warn('[send-otp] generateLink fallback note:', linkError.message);
+      } else if (linkData?.properties?.email_otp) {
+        supabaseOtp = linkData.properties.email_otp;
+      }
+    } catch (genErr) {
+      console.warn('[send-otp] generateLink exception fallback note:', genErr);
     }
 
-    // Genuine 6-digit OTP directly from Supabase
-    const otpCode = linkData.properties.email_otp;
-    console.log(`[AUTH 6-DIGIT OTP] >>> ${cleanEmail}: ${otpCode} <<<`);
+    const otpCode = supabaseOtp || generateOtp();
+    console.log(`[AUTH 6-DIGIT OTP (${type})] >>> ${cleanEmail}: ${otpCode} <<<`);
 
-    // Store in memory for instant server-side verification fallback
-    setOtp(cleanEmail, otpCode);
+    // Store in global memory store for instant server-side verification fallback
+    setOtp(cleanEmail, otpCode, supabaseOtp);
 
     // 3. Send 6-digit OTP email via Resend
     const emailResult = await EmailService.sendOtpEmail({

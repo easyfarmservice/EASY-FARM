@@ -1,4 +1,4 @@
-import { getResendClient, isResendConfigured } from '@/lib/resend';
+import { getResendClient, getResendFromEmail, isResendConfigured } from '@/lib/resend';
 
 export interface SendOrderEmailParams {
   toEmail: string;
@@ -48,7 +48,7 @@ export interface SendStayActivatedParams {
 
 export class EmailService {
   /**
-   * Safe email dispatch helper with fallback to onboarding@resend.dev
+   * Safe email dispatch helper — sends via RESEND_FROM_EMAIL.
    */
   private static async sendWithFallback(emailPayload: {
     from?: string;
@@ -57,7 +57,7 @@ export class EmailService {
     html: string;
   }) {
     const resend = getResendClient();
-    const primaryFrom = emailPayload.from || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const primaryFrom = emailPayload.from || getResendFromEmail();
 
     try {
       const response = await resend.emails.send({
@@ -66,25 +66,7 @@ export class EmailService {
       });
 
       if (response.error) {
-        console.warn(`Primary email dispatch (${primaryFrom}) returned error:`, response.error);
-
-        // Retry with default onboarding@resend.dev fallback if unverified domain issue
-        if (
-          primaryFrom !== 'onboarding@resend.dev' &&
-          (response.error.message?.includes('domain') || response.error.name?.includes('validation'))
-        ) {
-          console.info('Retrying email dispatch with default verified sender: onboarding@resend.dev');
-          const fallbackResponse = await resend.emails.send({
-            ...emailPayload,
-            from: 'onboarding@resend.dev',
-          });
-
-          if (fallbackResponse.error) {
-            return { success: false, error: fallbackResponse.error.message };
-          }
-          return { success: true, id: fallbackResponse.data?.id, fallbackUsed: true };
-        }
-
+        console.warn(`[EmailService] Primary email dispatch (${primaryFrom}) returned error:`, response.error);
         return { success: false, error: response.error.message };
       }
 

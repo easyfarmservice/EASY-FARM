@@ -29,9 +29,9 @@ function getNearestKnownCommunity(lat: number, lng: number) {
     }
   }
 
-  // Roughly within ~2.5km (0.025 degrees latitude/longitude)
-  const isClose = minDistance < 0.0006;
-  return { community: closest, isClose };
+  // Tight threshold: roughly within ~250-300m (0.00008 distSq) to confirm door is inside this exact gated complex
+  const isClose = minDistance < 0.00008;
+  return { community: closest, isClose, distMeters: Math.round(Math.sqrt(minDistance) * 111000) };
 }
 
 export async function POST(req: NextRequest) {
@@ -53,10 +53,68 @@ export async function POST(req: NextRequest) {
 
     const nearest = getNearestKnownCommunity(latitude, longitude);
 
-    let placeName = nearest.community.name;
+    let placeName = nearest.isClose ? nearest.community.name : 'Target Location';
     let mandal = nearest.community.area || 'Ghatkesar mandal';
     let pincode = nearest.community.pincode || '500088';
     let fullAddress = `${placeName}, ${mandal}, ${pincode}`;
+
+    // ── 1. Google Geocoding API (when enabled on Google Cloud) ────────────────
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (googleApiKey) {
+      try {
+        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleApiKey}`;
+        const gRes = await fetch(gUrl, { signal: AbortSignal.timeout(3000) });
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          if (gData.status === 'OK' && Array.isArray(gData.results) && gData.results.length > 0) {
+            const first = gData.results[0];
+            let gPlace = '';
+            let gLocality = '';
+            let gPin = '';
+
+            for (const c of first.address_components || []) {
+              if (c.types.includes('postal_code')) gPin = c.long_name;
+              if (
+                c.types.includes('sublocality_level_1') ||
+                c.types.includes('neighborhood') ||
+                c.types.includes('premise') ||
+                c.types.includes('point_of_interest') ||
+                c.types.includes('route')
+              ) {
+                if (!gPlace) gPlace = c.long_name;
+              }
+              if (c.types.includes('sublocality_level_2') || c.types.includes('locality')) {
+                if (!gLocality) gLocality = c.long_name;
+              }
+            }
+
+            const parts = first.formatted_address.split(',').map((p: string) => p.trim());
+            const shortName = parts.slice(0, 3).join(', ');
+            placeName = gPlace || (nearest.isClose ? nearest.community.name : parts[0]);
+            mandal = gLocality || parts[1] || nearest.community.area;
+            pincode = gPin || nearest.community.pincode;
+            fullAddress = first.formatted_address;
+
+            const resObj: GeoCacheEntry = {
+              placeName,
+              locality: mandal,
+              mandal,
+              pincode,
+              fullAddress,
+              shortName,
+              nearText: `Near ${placeName}`,
+              timestamp: Date.now(),
+            };
+            geocodeCache.set(cacheKey, resObj);
+            return NextResponse.json({ success: true, ...resObj });
+          }
+        }
+      } catch (gErr) {
+        // Fall back to high-resolution OpenStreetMap / BigDataCloud
+      }
+    }
+
+    // ── 2. High-Resolution OpenStreetMap Geocoding ────────────────────────────
 
     try {
       const controller = new AbortController();
@@ -101,26 +159,32 @@ export async function POST(req: NextRequest) {
           let resolvedPlace = '';
           if (specific && localityPart && !specific.toLowerCase().includes(localityPart.toLowerCase())) {
             resolvedPlace = `${specific}, ${localityPart}`;
+          } else if (specific) {
+            resolvedPlace = specific;
+          } else if (nearest.isClose) {
+            // High-precision match within ~250m of a known community or sector
+            resolvedPlace = nearest.community.name;
+          } else if (addr.road) {
+            resolvedPlace = localityPart && localityPart !== addr.road ? `${addr.road}, ${localityPart}` : addr.road;
+          } else if (localityPart && !localityPart.toLowerCase().includes('mandal')) {
+            resolvedPlace = localityPart;
           } else {
-            resolvedPlace =
-              specific ||
-              localityPart ||
-              data.name ||
-              (nearest.isClose ? nearest.community.name : 'Pinned Location');
+            resolvedPlace = data.name || `Near ${nearest.community.name}`;
           }
 
           // 4. Broader administrative area (Mandal / District / City)
           const extractedMandal =
+            (nearest.isClose ? nearest.community.area : null) ||
             addr.subdistrict ||
             addr.town ||
             addr.city_district ||
             addr.county ||
             addr.city ||
-            (nearest.isClose ? nearest.community.area : 'Ghatkesar mandal');
+            'Ghatkesar mandal';
 
-          // 5. Postal code - prioritize real 6-digit pin from Nominatim
-          let extractedPin = '';
-          if (addr.postcode) {
+          // 5. Postal code - prioritize verified community pin when inside known community
+          let extractedPin = nearest.isClose && nearest.community.pincode ? nearest.community.pincode : '';
+          if (!extractedPin && addr.postcode) {
             const clean = String(addr.postcode).replace(/\D/g, '').slice(0, 6);
             if (clean.length === 6 && clean.startsWith('5')) {
               extractedPin = clean;

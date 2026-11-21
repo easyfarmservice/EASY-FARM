@@ -11,10 +11,15 @@ interface OtpEntry {
   expiresAt: number; // epoch ms
 }
 
-// Module-level singleton
-const otpStore = new Map<string, OtpEntry>();
+// Global singleton so Next.js route bundles and HMR reloads share the same store
+const globalForOtp = globalThis as unknown as {
+  __easyfarmOtpStore?: Map<string, OtpEntry>;
+};
 
-const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const otpStore = globalForOtp.__easyfarmOtpStore ?? new Map<string, OtpEntry>();
+globalForOtp.__easyfarmOtpStore = otpStore;
+
+const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 /** Generate a cryptographically secure 6-digit numeric OTP string */
 export function generateOtp(): string {

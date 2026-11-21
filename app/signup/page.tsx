@@ -41,8 +41,66 @@ function SignupFormContent() {
     return () => clearInterval(interval);
   }, [cooldown]);
 
+  // Shared helper: send 6-digit OTP via Resend backend first, falling back to Supabase GoTrue
+  const requestSignupOtpCode = async (
+    cleanEmail: string,
+    cleanName: string,
+    cleanPhone: string
+  ): Promise<{ ok: boolean; notice?: string; error?: string }> => {
+    try {
+      const apiRes = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          type: 'signup',
+          name: cleanName,
+          phone: cleanPhone,
+        }),
+      });
+      const apiData = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && apiData.success) {
+        return {
+          ok: true,
+          notice: apiData.message || `6-digit verification code sent to ${cleanEmail}`,
+        };
+      }
+      if (apiRes.status === 429) {
+        return { ok: false, error: apiData.error || 'Too many requests. Please wait a moment.' };
+      }
+      if (apiRes.status >= 400 && apiRes.status < 500 && apiData.error) {
+        return { ok: false, error: apiData.error };
+      }
+    } catch {
+      // Network error reaching /api/auth/send-otp; fall through to Supabase GoTrue
+    }
+
+    const supabase = createClient();
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: cleanEmail,
+      options: {
+        shouldCreateUser: true,
+        data: {
+          full_name: cleanName,
+          phone: cleanPhone,
+          role: 'customer',
+        },
+      },
+    });
+
+    if (otpError) {
+      const msg = otpError.message.toLowerCase();
+      if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('security purposes')) {
+        return { ok: false, error: 'Too many requests. Please wait a few moments before trying again.' };
+      }
+      return { ok: false, error: otpError.message || 'Could not send verification code. Please try again.' };
+    }
+
+    return { ok: true, notice: `Verification code sent to ${cleanEmail}` };
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
-  // 1. SEND OTP CODE (Sign Up via Supabase signInWithOtp)
+  // 1. SEND OTP CODE (Resend API Primary with Supabase Fallback)
   // ─────────────────────────────────────────────────────────────────────────────
   const handleSendSignupOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,72 +128,15 @@ function SignupFormContent() {
     setSuccessNotice(null);
 
     try {
-      const supabase = createClient();
-
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          shouldCreateUser: true,
-          data: {
-            full_name: cleanName,
-            phone: cleanPhone,
-            role: 'customer',
-          },
-        },
-      });
-
-      if (otpError) {
-        const msg = otpError.message.toLowerCase();
-        // Server-side Resend OTP fallback if Supabase built-in mailer is rate-limited
-        if (
-          msg.includes('error sending') ||
-          msg.includes('magic link') ||
-          msg.includes('confirmation email') ||
-          msg.includes('rate limit') ||
-          msg.includes('too many') ||
-          (otpError as any).status === 500
-        ) {
-          try {
-            const fallbackRes = await fetch('/api/auth/send-otp', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: cleanEmail,
-                type: 'signup',
-                name: cleanName,
-                phone: cleanPhone,
-              }),
-            });
-            const fallbackData = await fallbackRes.json();
-            if (fallbackRes.ok && fallbackData.success) {
-              setStep('otp');
-              setCooldown(60);
-              setSuccessNotice(fallbackData.message || `Verification code sent to ${cleanEmail}`);
-              return;
-            }
-          } catch {}
-        }
-
-        if (msg.includes('rate limit') || msg.includes('too many')) {
-          setError('Too many requests. Please wait a few moments before trying again.');
-        } else if (
-          msg.includes('error sending') ||
-          msg.includes('magic link') ||
-          msg.includes('confirmation email') ||
-          (otpError as any).status === 500
-        ) {
-          setError(
-            'Supabase Mailer Error: Supabase free tier rate-limits built-in emails (3/hour). Please configure Custom SMTP in your Supabase Dashboard (Project Settings → Authentication → SMTP Settings).'
-          );
-        } else {
-          setError(otpError.message || 'Could not send verification code. Please try again.');
-        }
+      const res = await requestSignupOtpCode(cleanEmail, cleanName, cleanPhone);
+      if (!res.ok) {
+        setError(res.error || 'Could not send verification code. Please try again.');
         return;
       }
 
       setStep('otp');
       setCooldown(60);
-      setSuccessNotice(`Verification code sent to ${cleanEmail}`);
+      setSuccessNotice(res.notice || `Verification code sent to ${cleanEmail}`);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -164,57 +165,54 @@ function SignupFormContent() {
       const cleanName = fullName.trim() || 'Resident';
       const cleanPhone = phone.trim();
 
-      // Tier 1: Try standard 'email' OTP
-      let verifyResult: { data: any; error: any } = await supabase.auth.verifyOtp({
-        email: cleanEmail,
-        token: cleanOtp,
-        type: 'email',
-      });
+      let verifyResult: { data: any; error: any } = { data: null, error: null };
 
-      // Tier 2: Try 'signup' token type
-      if (verifyResult.error) {
-        const signupResult = await supabase.auth.verifyOtp({
-          email: cleanEmail,
-          token: cleanOtp,
-          type: 'signup',
+      // Tier 1: Server-side verification (/api/auth/verify-otp)
+      try {
+        const apiRes = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, otp: cleanOtp }),
         });
-        if (!signupResult.error && signupResult.data?.user) {
-          verifyResult = signupResult;
-        }
-      }
-
-      // Tier 3: Try 'magiclink' token type
-      if (verifyResult.error) {
-        const magicResult = await supabase.auth.verifyOtp({
-          email: cleanEmail,
-          token: cleanOtp,
-          type: 'magiclink',
-        });
-        if (!magicResult.error && magicResult.data?.user) {
-          verifyResult = magicResult;
-        }
-      }
-
-      // Tier 4: Server-side fallback verification
-      if (verifyResult.error) {
-        try {
-          const apiRes = await fetch('/api/auth/verify-otp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: cleanEmail, otp: cleanOtp }),
-          });
-          const apiData = await apiRes.json();
-          if (apiRes.ok && apiData.success) {
-            verifyResult = { data: { user: apiData.user, session: apiData.session }, error: null };
+        const apiData = await apiRes.json().catch(() => ({}));
+        if (apiRes.ok && apiData.success && apiData.user) {
+          if (apiData.session?.access_token && apiData.session?.refresh_token) {
+            await supabase.auth.setSession({
+              access_token: apiData.session.access_token,
+              refresh_token: apiData.session.refresh_token,
+            }).catch(() => {});
           }
-        } catch (_) {}
+          verifyResult = { data: { user: apiData.user, session: apiData.session }, error: null };
+        } else if (apiData.error) {
+          verifyResult = { data: null, error: { message: apiData.error } };
+        }
+      } catch {
+        // Fallback to direct client verification below
+      }
+
+      // Tier 2: Client-side Supabase verifyOtp fallback ('magiclink', 'email', 'signup')
+      if (!verifyResult.data?.user) {
+        for (const otpType of ['magiclink', 'email', 'signup'] as const) {
+          const attempt = await supabase.auth.verifyOtp({
+            email: cleanEmail,
+            token: cleanOtp,
+            type: otpType,
+          });
+          if (!attempt.error && attempt.data?.user) {
+            verifyResult = attempt;
+            break;
+          }
+          if (!verifyResult.error && attempt.error) {
+            verifyResult.error = attempt.error;
+          }
+        }
       }
 
       if (verifyResult.error || !verifyResult.data?.user) {
         const msg = verifyResult.error?.message?.toLowerCase() || '';
         if (msg.includes('expired')) {
           setError('This verification code has expired. Please request a new code.');
-        } else if (msg.includes('invalid') || msg.includes('token')) {
+        } else if (msg.includes('invalid') || msg.includes('incorrect') || msg.includes('token')) {
           setError('Incorrect verification code. Please check your email and try again.');
         } else {
           setError(verifyResult.error?.message || 'Verification failed. Please try again.');
@@ -316,40 +314,15 @@ function SignupFormContent() {
     setSuccessNotice(null);
 
     try {
-      const supabase = createClient();
       const cleanEmail = email.trim().toLowerCase();
-
-      const { error: resendErr } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          shouldCreateUser: true,
-          data: {
-            full_name: fullName.trim(),
-            phone: phone.trim(),
-            role: 'customer',
-          },
-        },
-      });
-
-      if (resendErr) {
-        const msg = resendErr.message.toLowerCase();
-        if (
-          msg.includes('error sending') ||
-          msg.includes('magic link') ||
-          msg.includes('confirmation email') ||
-          (resendErr as any).status === 500
-        ) {
-          setError(
-            'Supabase Mailer Error: Supabase free tier rate-limits built-in emails (3/hour). Please configure Custom SMTP in your Supabase Dashboard (Project Settings → Authentication → SMTP Settings).'
-          );
-        } else {
-          setError(resendErr.message || 'Could not resend verification code.');
-        }
+      const res = await requestSignupOtpCode(cleanEmail, fullName.trim() || 'Resident', phone.trim());
+      if (!res.ok) {
+        setError(res.error || 'Could not resend verification code.');
         return;
       }
 
       setCooldown(60);
-      setSuccessNotice(`New verification code sent to ${cleanEmail}`);
+      setSuccessNotice(res.notice || `New verification code sent to ${cleanEmail}`);
     } catch (err: any) {
       setError(err.message || 'Could not resend verification code.');
     } finally {

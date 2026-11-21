@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin, Navigation, AlertTriangle, CheckCircle2, Search, ArrowRight, Compass, RefreshCw, X, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { EasyFarmLoader } from '@/components/ui/EasyFarmLoader';
+import { SERVICEABLE_COMMUNITIES } from '@/lib/constants';
 
 export interface LocationValidationResult {
   lat: number;
@@ -39,10 +40,12 @@ interface DeliveryMapPickerProps {
 }
 
 interface SearchSuggestion {
-  place_id: number;
+  place_id: number | string;
   display_name: string;
   lat: string;
   lon: string;
+  googlePlaceId?: string;
+  badge?: string;
 }
 
 export function DeliveryMapPicker({
@@ -53,6 +56,8 @@ export function DeliveryMapPicker({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const userGpsMarkerRef = useRef<any>(null);
+  const showUserCurrentLocationRef = useRef<((lat: number, lng: number) => void) | null>(null);
   const searchTimeoutRef = useRef<any>(null);
 
   // Pinned location & verification state
@@ -176,6 +181,79 @@ export function DeliveryMapPicker({
 
   // Reverse geocode to get a readable building/street label, place name, mandal, and pincode
   const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<GeocodedAddressInfo | undefined> => {
+    // 1. First attempt with client-side Google Maps Geocoder if Google Maps JS is loaded
+    if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
+      try {
+        const geocoder = new (window as any).google.maps.Geocoder();
+        const googleResult = await new Promise<any>((resolve) => {
+          geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+            if (status === 'OK' && results && results[0]) {
+              resolve(results[0]);
+            } else {
+              resolve(null);
+            }
+          });
+        });
+
+        if (googleResult) {
+          let placeName = '';
+          let mandal = '';
+          let pincode = '';
+
+          for (const comp of googleResult.address_components || []) {
+            if (comp.types.includes('postal_code')) pincode = comp.long_name;
+            if (
+              comp.types.includes('sublocality_level_1') ||
+              comp.types.includes('neighborhood') ||
+              comp.types.includes('premise') ||
+              comp.types.includes('point_of_interest')
+            ) {
+              if (!placeName) placeName = comp.long_name;
+            }
+            if (comp.types.includes('sublocality_level_2') || comp.types.includes('locality')) {
+              if (!mandal) mandal = comp.long_name;
+            }
+          }
+
+          const shortName = googleResult.formatted_address?.split(',').slice(0, 3).join(', ') || googleResult.formatted_address;
+          const fullAddress = googleResult.formatted_address;
+          if (!placeName) placeName = shortName.split(',')[0];
+          if (!mandal) mandal = 'Ghatkesar mandal';
+          if (!pincode) pincode = '500088';
+
+          setResolvedAddress(shortName);
+          setDetectedPlaceName(placeName);
+          setDetectedMandal(mandal);
+          setDetectedPincode(pincode);
+
+          if (markerRef.current) {
+            try {
+              markerRef.current
+                .bindPopup(
+                  `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
+                    <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${placeName}</strong>
+                    <span style="color: #475569; font-size: 11px;">${mandal} • PIN <strong>${pincode}</strong></span>
+                  </div>`,
+                  { closeButton: false, offset: [0, -32] }
+                )
+                .openPopup();
+            } catch {}
+          }
+
+          return {
+            shortName,
+            placeName,
+            mandal,
+            pincode,
+            fullAddress,
+          };
+        }
+      } catch (googleErr) {
+        console.warn('Google client reverse geocoding note:', googleErr);
+      }
+    }
+
+    // 2. Authoritative backend reverse-geocoding fallback
     try {
       const res = await fetch('/api/delivery/reverse-geocode', {
         method: 'POST',
@@ -329,19 +407,121 @@ export function DeliveryMapPicker({
 
       mapInstanceRef.current = map;
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-      }).addTo(map);
+      // Google Maps JavaScript API Layer (when API key is present) with fallback to Esri World Street Map
+      const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (googleApiKey) {
+        L.tileLayer(`https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${googleApiKey}`, {
+          maxZoom: 20,
+          subdomains: ['0', '1', '2', '3'],
+          attribution: 'Map data © Google',
+        }).addTo(map);
 
-      // Custom sleek Pin Marker
+        // Dynamically load Google Maps JavaScript API library for Geocoding & Places
+        if (!document.getElementById('google-maps-js-sdk')) {
+          const script = document.createElement('script');
+          script.id = 'google-maps-js-sdk';
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
+          script.async = true;
+          document.head.appendChild(script);
+        }
+      } else {
+        // Ultra-smooth, high-resolution Esri World Street Map fallback
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19,
+          attribution: '',
+        }).addTo(map);
+      }
+
+      // Force size recalculation to prevent blank map rectangles
+      setTimeout(() => {
+        try {
+          map.invalidateSize();
+        } catch {}
+      }, 250);
+
+      // Inject map marker animations if not present
+      if (!document.getElementById('easyfarm-map-pin-styles')) {
+        const style = document.createElement('style');
+        style.id = 'easyfarm-map-pin-styles';
+        style.innerHTML = `
+          @keyframes user-gps-radar {
+            0% { transform: scale(0.6); opacity: 0.9; }
+            70% { transform: scale(2.4); opacity: 0; }
+            100% { transform: scale(2.4); opacity: 0; }
+          }
+          .custom-delivery-pin-wrap {
+            transition: transform 0.15s ease-out;
+          }
+          .custom-delivery-pin:hover .custom-delivery-pin-wrap {
+            transform: translate(-50%, -106%) scale(1.04);
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
+      // Helper to display user's Current Location (pulsing blue beacon)
+      const showUserCurrentLocation = (lat: number, lng: number) => {
+        if (!mapInstanceRef.current || !isMounted) return;
+
+        const gpsIcon = L.divIcon({
+          className: 'user-current-gps-marker',
+          html: `
+            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
+              <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: rgba(37, 99, 235, 0.35); animation: user-gps-radar 2s infinite ease-out;"></div>
+              <div style="position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
+              <div style="position: absolute; width: 10px; height: 10px; border-radius: 50%; background-color: #2563eb;"></div>
+            </div>
+          `,
+          iconSize: [0, 0],
+        });
+
+        if (userGpsMarkerRef.current) {
+          userGpsMarkerRef.current.setLatLng([lat, lng]);
+        } else {
+          const gpsMarker = L.marker([lat, lng], {
+            icon: gpsIcon,
+            zIndexOffset: 50,
+          }).addTo(mapInstanceRef.current);
+
+          gpsMarker.bindTooltip(
+            `<div style="font-family: inherit; font-size: 11px; font-weight: 700; color: #1e3a8a; padding: 2px 6px;">📍 You are here (Current Location)</div>`,
+            { direction: 'top', offset: [0, -14] }
+          );
+
+          userGpsMarkerRef.current = gpsMarker;
+        }
+      };
+
+      showUserCurrentLocationRef.current = showUserCurrentLocation;
+
+      // High-Definition Proper Delivery Location Pin Marker
       const customIcon = L.divIcon({
         className: 'custom-delivery-pin',
         html: `
-          <div style="position: relative; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -100%);">
-            <div style="width: 36px; height: 36px; background: #065f46; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0,0,0,0.35); border: 2.5px solid white;">
-              <div style="width: 12px; height: 12px; background: white; border-radius: 50%; transform: rotate(45deg);"></div>
+          <div class="custom-delivery-pin-wrap" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -100%); cursor: grab; user-select: none;">
+            <!-- Floating "Deliver Here" Pill -->
+            <div style="background: #064e3b; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 20px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.32); border: 1.5px solid #ffffff; letter-spacing: 0.2px; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; pointer-events: none;">
+              <span>📍 Deliver Here</span>
             </div>
-            <div style="position: absolute; bottom: -8px; width: 14px; height: 6px; background: rgba(0,0,0,0.25); border-radius: 50%; filter: blur(1px);"></div>
+
+            <!-- Proper Teardrop Location Pin -->
+            <div style="position: relative; width: 42px; height: 52px; display: flex; align-items: center; justify-content: center;">
+              <svg width="42" height="52" viewBox="0 0 42 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.32));">
+                <path d="M21 0C9.402 0 0 9.402 0 21C0 35.8 18.5 50.8 20.2 51.7C20.7 52 21.3 52 21.8 51.7C23.5 50.8 42 35.8 42 21C42 9.402 32.598 0 21 0Z" fill="url(#deliveryPinGradient)"/>
+                <path d="M21 1.5C10.23 1.5 1.5 10.23 1.5 21C1.5 34.6 19 49 21 50.4C23 49 40.5 34.6 40.5 21C40.5 10.23 31.77 1.5 21 1.5Z" stroke="#ffffff" stroke-width="2.5"/>
+                <circle cx="21" cy="19" r="9" fill="#ffffff"/>
+                <circle cx="21" cy="19" r="5" fill="#047857"/>
+                <defs>
+                  <linearGradient id="deliveryPinGradient" x1="21" y1="0" x2="21" y2="52" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#059669"/>
+                    <stop offset="1" stop-color="#064e3b"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            <!-- Ground Shadow -->
+            <div style="position: absolute; bottom: -5px; width: 22px; height: 6px; background: rgba(0,0,0,0.35); border-radius: 50%; filter: blur(1.5px);"></div>
           </div>
         `,
         iconSize: [0, 0],
@@ -350,6 +530,7 @@ export function DeliveryMapPicker({
       const marker = L.marker([coords.lat, coords.lng], {
         draggable: true,
         icon: customIcon,
+        zIndexOffset: 1000,
       }).addTo(map);
 
       markerRef.current = marker;
@@ -415,6 +596,7 @@ export function DeliveryMapPicker({
             if (!isMounted) return;
             setDetectingGps(false);
             const { latitude, longitude } = pos.coords;
+            showUserCurrentLocation(latitude, longitude);
             updatePosition(latitude, longitude, true);
           },
           (err) => {
@@ -482,6 +664,13 @@ export function DeliveryMapPicker({
         } catch {}
       });
       zoneLayersRef.current = [];
+      if (userGpsMarkerRef.current) {
+        try {
+          userGpsMarkerRef.current.remove();
+        } catch {}
+        userGpsMarkerRef.current = null;
+      }
+      showUserCurrentLocationRef.current = null;
       if (mapInstanceRef.current) {
         try {
           mapInstanceRef.current.remove();
@@ -496,7 +685,7 @@ export function DeliveryMapPicker({
     };
   }, []);
 
-  // Address search with autocomplete
+  // Address search with instant local matching & autocomplete
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearchQuery(val);
@@ -508,8 +697,60 @@ export function DeliveryMapPicker({
       return;
     }
 
+    // 1. Instant match in exact local corridor gated communities, societies, and sectors
+    const clean = val.trim().toLowerCase();
+    const localMatches: SearchSuggestion[] = [];
+    if (clean.length >= 2) {
+      SERVICEABLE_COMMUNITIES.forEach((c, idx) => {
+        if (
+          c.name.toLowerCase().includes(clean) ||
+          c.area.toLowerCase().includes(clean) ||
+          c.pincode.includes(clean)
+        ) {
+          localMatches.push({
+            place_id: 1000 + idx,
+            display_name: `${c.name}, ${c.area}, ${c.pincode}`,
+            lat: String(c.lat),
+            lon: String(c.lng),
+          });
+        }
+      });
+      if (localMatches.length > 0) {
+        setSuggestions(localMatches.slice(0, 8));
+        setShowSuggestions(true);
+      }
+    }
+
     searchTimeoutRef.current = setTimeout(async () => {
       setSearching(true);
+
+      // 2. Google Places (New) Autocomplete via backend endpoint
+      let googleResults: SearchSuggestion[] = [];
+      try {
+        const gRes = await fetch('/api/delivery/places-autocomplete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: val, latitude: coords.lat, longitude: coords.lng }),
+        });
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          if (gData.success && Array.isArray(gData.predictions)) {
+            googleResults = gData.predictions.map((p: any, idx: number) => ({
+              place_id: `g_${p.placeId || idx}`,
+              display_name: p.description || p.primaryText,
+              lat: '0',
+              lon: '0',
+              googlePlaceId: p.placeId,
+              badge: 'Google Verified',
+            }));
+          }
+        }
+      } catch (gErr) {
+        console.warn('Google Places API note:', gErr);
+      }
+
+      // 3. OpenStreetMap / Nominatim search fallback
+      let nominatimResults: SearchSuggestion[] = [];
       try {
         const queryWithContext = val.toLowerCase().includes('hyderabad') || val.toLowerCase().includes('ghatkesar')
           ? val
@@ -518,27 +759,81 @@ export function DeliveryMapPicker({
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
             queryWithContext
-          )}&limit=5&countrycodes=in`
+          )}&limit=6&countrycodes=in`
         );
         const data = await res.json();
         if (Array.isArray(data)) {
-          setSuggestions(data);
-          setShowSuggestions(true);
+          nominatimResults = data.map((d: any) => ({
+            place_id: d.place_id,
+            display_name: d.display_name,
+            lat: d.lat,
+            lon: d.lon,
+            badge: 'OpenStreetMap',
+          }));
         }
       } catch (err) {
         console.warn('Location search error:', err);
       } finally {
         setSearching(false);
       }
-    }, 350);
+
+      // Merge results prioritizing local exact matches, then Google Places, then OSM
+      const combined = [...localMatches, ...googleResults, ...nominatimResults];
+      const seen = new Set<string>();
+      const deduped: SearchSuggestion[] = [];
+
+      for (const item of combined) {
+        const key = item.googlePlaceId || item.display_name.toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(item);
+        }
+      }
+
+      if (deduped.length > 0) {
+        setSuggestions(deduped.slice(0, 8));
+        setShowSuggestions(true);
+      }
+    }, 280);
   };
 
-  const handleSelectSuggestion = (s: SearchSuggestion) => {
+  const handleSelectSuggestion = async (s: SearchSuggestion) => {
+    setShowSuggestions(false);
+    setSearchQuery(s.display_name.split(',')[0]);
+
+    // If suggestion is from Google Places API (New), fetch exact coordinates via place-details
+    if (s.googlePlaceId && (s.lat === '0' || !s.lat)) {
+      try {
+        setSearching(true);
+        const detailsRes = await fetch('/api/delivery/place-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ placeId: s.googlePlaceId }),
+        });
+        if (detailsRes.ok) {
+          const detailsData = await detailsRes.json();
+          if (detailsData.success && detailsData.latitude && detailsData.longitude) {
+            updatePosition(
+              detailsData.latitude,
+              detailsData.longitude,
+              true,
+              detailsData.formattedAddress || s.display_name
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve Google place details:', err);
+      } finally {
+        setSearching(false);
+      }
+    }
+
     const lat = parseFloat(s.lat);
     const lng = parseFloat(s.lon);
-    setSearchQuery(s.display_name.split(',')[0]);
-    setShowSuggestions(false);
-    updatePosition(lat, lng, true, s.display_name);
+    if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+      updatePosition(lat, lng, true, s.display_name);
+    }
   };
 
   // GPS "Use Current Location" with graceful error handling
@@ -555,6 +850,7 @@ export function DeliveryMapPicker({
       (position) => {
         setDetectingGps(false);
         const { latitude, longitude } = position.coords;
+        showUserCurrentLocationRef.current?.(latitude, longitude);
         updatePosition(latitude, longitude, true);
       },
       (error) => {

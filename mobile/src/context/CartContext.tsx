@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeStorage } from '../lib/storage';
 import { ProductItem } from '../data/initialProducts';
+import {
+  fetchDeliverySettings,
+  DEFAULT_DELIVERY_SETTINGS,
+  AdminDeliverySettings,
+} from '../services/deliverySettingsService';
 
 export interface CartItem {
   product: ProductItem;
@@ -10,6 +15,7 @@ export interface CartItem {
 interface CartContextType {
   items: CartItem[];
   addToCart: (product: ProductItem, quantity?: number) => void;
+  setCartItem: (product: ProductItem, quantity?: number) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
@@ -22,11 +28,11 @@ interface CartContextType {
   totalPayable: number;
   coinsDiscountAmount: number;
   setCoinsDiscountAmount: (amt: number) => void;
+  deliverySettings: AdminDeliverySettings;
+  refreshDeliverySettings: () => Promise<void>;
 }
 
 const CART_STORAGE_KEY = '@easyfarm_cart_v1';
-const FREE_DELIVERY_THRESHOLD = 299;
-const STANDARD_DELIVERY_FEE = 30;
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
@@ -34,12 +40,29 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [items, setItems] = useState<CartItem[]>([]);
   const [coinsDiscountAmount, setCoinsDiscountAmount] = useState<number>(0);
   const [loaded, setLoaded] = useState<boolean>(false);
+  const [deliverySettings, setDeliverySettings] = useState<AdminDeliverySettings>(
+    DEFAULT_DELIVERY_SETTINGS
+  );
+
+  // Load delivery settings from database (managed from Admin Panel)
+  const refreshDeliverySettings = useCallback(async () => {
+    try {
+      const liveSettings = await fetchDeliverySettings();
+      setDeliverySettings(liveSettings);
+    } catch (err) {
+      console.warn('Could not refresh delivery settings:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDeliverySettings();
+  }, [refreshDeliverySettings]);
 
   // Load cart from storage on launch
   useEffect(() => {
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(CART_STORAGE_KEY);
+        const stored = await SafeStorage.getItem(CART_STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
@@ -59,7 +82,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!loaded) return;
     (async () => {
       try {
-        await AsyncStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+        await SafeStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
       } catch (err) {
         console.warn('Failed to save cart to storage:', err);
       }
@@ -72,8 +95,28 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existing) {
         return prev.map((i) =>
           i.product.id === product.id
-            ? { ...i, quantity: i.quantity + quantity }
+            ? {
+                ...i,
+                product: product.customizedItems ? product : i.product,
+                quantity: i.quantity + quantity,
+              }
             : i
+        );
+      }
+      return [...prev, { product, quantity }];
+    });
+  }, []);
+
+  const setCartItem = useCallback((product: ProductItem, quantity = 1) => {
+    setItems((prev) => {
+      const existing = prev.find((i) => i.product.id === product.id);
+      if (quantity <= 0) {
+        if (!existing) return prev;
+        return prev.filter((i) => i.product.id !== product.id);
+      }
+      if (existing) {
+        return prev.map((i) =>
+          i.product.id === product.id ? { product, quantity } : i
         );
       }
       return [...prev, { product, quantity }];
@@ -114,8 +157,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     0
   );
 
-  const isFreeDelivery = subtotal >= FREE_DELIVERY_THRESHOLD || subtotal === 0;
-  const deliveryFee = isFreeDelivery ? 0 : STANDARD_DELIVERY_FEE;
+  const isFreeDelivery =
+    deliverySettings.isDeliveryFree ||
+    deliverySettings.baseDeliveryFee === 0 ||
+    subtotal >= deliverySettings.freeDeliveryThreshold ||
+    subtotal === 0;
+
+  const deliveryFee = isFreeDelivery ? 0 : deliverySettings.baseDeliveryFee;
   const totalPayable = Math.max(0, subtotal + deliveryFee - coinsDiscountAmount);
 
   return (
@@ -123,6 +171,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         items,
         addToCart,
+        setCartItem,
         updateQuantity,
         removeFromCart,
         clearCart,
@@ -130,11 +179,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         totalItems,
         subtotal,
         deliveryFee,
-        freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
+        freeDeliveryThreshold: deliverySettings.freeDeliveryThreshold,
         isFreeDelivery,
         totalPayable,
         coinsDiscountAmount,
         setCoinsDiscountAmount,
+        deliverySettings,
+        refreshDeliverySettings,
       }}
     >
       {children}
@@ -149,3 +200,4 @@ export const useCart = () => {
   }
   return ctx;
 };
+

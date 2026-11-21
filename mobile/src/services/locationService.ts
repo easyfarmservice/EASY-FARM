@@ -5,7 +5,7 @@
  */
 
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeStorage } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import {
   SERVICEABLE_COMMUNITIES,
@@ -15,6 +15,9 @@ import {
 const RECENT_SEARCHES_KEY = '@easyfarm:recent_searches_v1';
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.easyfarm.co.in';
+export const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  'AIzaSyArhi4VQuGUHPY_cBbf4tOlGW1Q4e8JHLI';
 
 export interface LocationSearchResult {
   id: string;
@@ -98,7 +101,49 @@ export async function searchLocations(
     return results.slice(0, 8);
   }
 
-  // 2. Fetch external geocoding suggestions
+  // 2. Fetch Google Places Autocomplete if API key is active
+  if (GOOGLE_MAPS_API_KEY) {
+    try {
+      const placesUrl = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+        clean
+      )}&location=17.4475,78.6534&radius=25000&components=country:in&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const gRes = await fetch(placesUrl, { signal });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        if (gData.status === 'OK' && Array.isArray(gData.predictions)) {
+          for (const pred of gData.predictions) {
+            const mainText =
+              pred.structured_formatting?.main_text || pred.description.split(',')[0];
+            const secondaryText =
+              pred.structured_formatting?.secondary_text || pred.description;
+
+            results.push({
+              id: `google-${pred.place_id}`,
+              title: mainText,
+              subtitle: secondaryText,
+              fullAddress: pred.description,
+              latitude: 17.4475,
+              longitude: 78.6534,
+              locality: secondaryText.split(',')[0]?.trim() || 'Ghatkesar',
+              isKnownCommunity: false,
+            });
+
+            if (results.length >= 8) break;
+          }
+        }
+      }
+    } catch (gErr: any) {
+      if (gErr?.name === 'AbortError') return [];
+      console.warn('Google Places API search fallback:', gErr);
+    }
+  }
+
+  if (results.length >= 8) {
+    return results.slice(0, 8);
+  }
+
+  // 3. Fallback to OpenStreetMap / Nominatim
   try {
     const queryWithContext =
       clean.includes('hyderabad') || clean.includes('ghatkesar')
@@ -153,7 +198,6 @@ export async function searchLocations(
     }
   } catch (err: any) {
     if (err?.name === 'AbortError') {
-      // Intentionally aborted due to newer keystroke
       return [];
     }
     console.warn('Location search API warning:', err?.message || err);
@@ -163,16 +207,143 @@ export async function searchLocations(
 }
 
 /**
+ * Fetch precise coordinates from Google Places API for a place_id
+ */
+export async function getPlaceCoordinates(
+  placeId: string
+): Promise<{ latitude: number; longitude: number } | null> {
+  const cleanId = placeId.replace(/^google-/, '');
+  if (!GOOGLE_MAPS_API_KEY) return null;
+
+  try {
+    const res = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${cleanId}&fields=geometry&key=${GOOGLE_MAPS_API_KEY}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.result?.geometry?.location) {
+        return {
+          latitude: data.result.geometry.location.lat,
+          longitude: data.result.geometry.location.lng,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Google Place Details error:', err);
+  }
+  return null;
+}
+
+/**
  * Reverse geocode a latitude & longitude
  */
 export async function reverseGeocodeLocation(
   latitude: number,
   longitude: number
 ): Promise<ResolvedAddress> {
-  // Call the existing Easy Farm backend endpoint
+  // 1. First priority: Direct Google Geocoding API for exact doorstep address
+  if (GOOGLE_MAPS_API_KEY) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+
+      const googleRes = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timer);
+
+      if (googleRes.ok) {
+        const gData = await googleRes.json();
+        if (gData.status === 'OK' && gData.results && gData.results.length > 0) {
+          const top = gData.results[0];
+          let sublocality = '';
+          let locality = '';
+          let mandal = '';
+          let pincode = '';
+          let premise = '';
+          let route = '';
+
+          for (const comp of top.address_components || []) {
+            const types = comp.types || [];
+            if (types.includes('postal_code')) pincode = comp.long_name;
+            if (types.includes('sublocality_level_1')) sublocality = comp.long_name;
+            if (types.includes('sublocality_level_2')) premise = comp.long_name;
+            if (types.includes('locality')) locality = comp.long_name;
+            if (
+              types.includes('administrative_area_level_3') ||
+              types.includes('administrative_area_level_2')
+            ) {
+              if (!mandal) mandal = comp.long_name;
+            }
+            if (types.includes('route')) route = comp.long_name;
+          }
+
+          // Micro-snap to nearest community if within 250m
+          const { community, distanceKm } = getNearestCommunity(latitude, longitude);
+          let placeName = '';
+          if (distanceKm <= 0.25) {
+            placeName = community.name;
+          } else {
+            placeName =
+              premise ||
+              sublocality ||
+              route ||
+              top.address_components?.[0]?.long_name ||
+              'Current Location';
+          }
+
+          const resolvedPincode = pincode || community?.pincode || '500088';
+          const resolvedLocality = sublocality || locality || community?.area || 'Pocharam';
+          const resolvedMandal = mandal || 'Ghatkesar mandal';
+
+          return {
+            placeName,
+            locality: resolvedLocality,
+            mandal: resolvedMandal,
+            pincode: resolvedPincode,
+            fullAddress:
+              top.formatted_address || `${placeName}, ${resolvedLocality}, ${resolvedPincode}`,
+            nearText: `Near ${placeName}`,
+            latitude,
+            longitude,
+          };
+        }
+      }
+    } catch (gErr) {
+      console.warn('Google reverse-geocode fallback:', gErr);
+    }
+  }
+
+  // 2. Try device-native Expo Geocoder (instant on real mobile devices)
+  try {
+    const nativeResults = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (nativeResults && nativeResults.length > 0) {
+      const item = nativeResults[0];
+      const placeName = item.name || item.street || item.subregion || 'Current Location';
+      const locality = item.subregion || item.city || item.district || 'Hyderabad';
+      const pincode = item.postalCode || '500088';
+      const parts = [item.name, item.street, item.subregion, item.city, item.postalCode].filter(Boolean);
+      const fullAddress = parts.join(', ');
+      return {
+        placeName,
+        locality,
+        mandal: item.district || item.subregion || 'Ghatkesar mandal',
+        pincode,
+        fullAddress: fullAddress || `${placeName}, ${locality}, ${pincode}`,
+        nearText: `Near ${placeName}`,
+        latitude,
+        longitude,
+      };
+    }
+  } catch (nativeErr) {
+    // Continue to backend or nearest community
+  }
+
+  // 2. Call the Easy Farm backend endpoint
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
+    const timer = setTimeout(() => controller.abort(), 3500);
 
     const res = await fetch(`${API_BASE_URL}/api/delivery/reverse-geocode`, {
       method: 'POST',
@@ -203,7 +374,7 @@ export async function reverseGeocodeLocation(
     console.warn('Backend reverse-geocode call fallback:', err);
   }
 
-  // Graceful local fallback via nearest known community
+  // 3. Graceful corridor fallback via nearest known community
   const { community } = getNearestCommunity(latitude, longitude);
   return {
     placeName: community.name,
@@ -231,6 +402,15 @@ export async function getCurrentDeviceLocation(): Promise<{
     );
   }
 
+  // Try last known first for instant response
+  const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+  if (lastKnown?.coords) {
+    return {
+      latitude: lastKnown.coords.latitude,
+      longitude: lastKnown.coords.longitude,
+    };
+  }
+
   const location = await Location.getCurrentPositionAsync({
     accuracy: Location.Accuracy.Balanced,
   });
@@ -242,11 +422,90 @@ export async function getCurrentDeviceLocation(): Promise<{
 }
 
 /**
+ * Auto-detect user current location with fast fallback and reverse geocoding
+ */
+export async function getUserCurrentLocation(): Promise<{
+  latitude: number;
+  longitude: number;
+  formattedAddress: string;
+  locality: string;
+  pincode: string;
+  isServiceable: boolean;
+}> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      return {
+        latitude: 17.4475,
+        longitude: 78.6534,
+        formattedAddress: 'Singapore Township, Pocharam, 500088',
+        locality: 'Singapore Township',
+        pincode: '500088',
+        isServiceable: true,
+      };
+    }
+
+    let coords: { latitude: number; longitude: number } | null = null;
+
+    // 1. First attempt active fresh GPS position with 4.5s timeout
+    try {
+      const positionPromise = Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4500));
+      const posResult: any = await Promise.race([positionPromise, timeoutPromise]);
+      if (posResult?.coords) {
+        coords = {
+          latitude: posResult.coords.latitude,
+          longitude: posResult.coords.longitude,
+        };
+      }
+    } catch {
+      // Continue to last known
+    }
+
+    // 2. Fall back to last known position if active fix took longer
+    if (!coords) {
+      const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (lastKnown?.coords) {
+        coords = {
+          latitude: lastKnown.coords.latitude,
+          longitude: lastKnown.coords.longitude,
+        };
+      }
+    }
+
+    const lat = coords?.latitude || 17.4475;
+    const lng = coords?.longitude || 78.6534;
+
+    const resolved = await reverseGeocodeLocation(lat, lng);
+    return {
+      latitude: lat,
+      longitude: lng,
+      formattedAddress: resolved.fullAddress,
+      locality: resolved.locality,
+      pincode: resolved.pincode,
+      isServiceable: true,
+    };
+  } catch (err) {
+    console.warn('Auto location fetch fallback:', err);
+    return {
+      latitude: 17.4475,
+      longitude: 78.6534,
+      formattedAddress: 'Singapore Township, Pocharam, 500088',
+      locality: 'Singapore Township',
+      pincode: '500088',
+      isServiceable: true,
+    };
+  }
+}
+
+/**
  * Retrieve recent search items from local storage
  */
 export async function getRecentSearches(): Promise<LocationSearchResult[]> {
   try {
-    const raw = await AsyncStorage.getItem(RECENT_SEARCHES_KEY);
+    const raw = await SafeStorage.getItem(RECENT_SEARCHES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -268,7 +527,7 @@ export async function saveRecentSearch(item: LocationSearchResult): Promise<void
         Math.abs(x.longitude - item.longitude) > 0.0001
     );
     const updated = [item, ...filtered].slice(0, 5);
-    await AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+    await SafeStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
   } catch (err) {
     console.warn('Failed to save recent search:', err);
   }
@@ -279,7 +538,7 @@ export async function saveRecentSearch(item: LocationSearchResult): Promise<void
  */
 export async function clearRecentSearches(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+    await SafeStorage.removeItem(RECENT_SEARCHES_KEY);
   } catch {}
 }
 

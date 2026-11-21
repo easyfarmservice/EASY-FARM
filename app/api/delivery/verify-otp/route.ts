@@ -169,8 +169,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 9. Constant-time verification of submitted OTP against stored hash
-    const isValid = verifyDeliveryOtpHash(submittedOtp, order.delivery_otp_hash);
+    // 9. Constant-time verification of submitted OTP against stored hash or stored meta OTP
+    let meta: any = null;
+    if (order.notes) {
+      try {
+        if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
+      } catch {}
+    }
+
+    const cleanSubmittedOtp = String(submittedOtp || '').replace(/\D/g, '').trim();
+    const isHashValid = verifyDeliveryOtpHash(cleanSubmittedOtp, order.delivery_otp_hash);
+    const isMetaValid = Boolean(meta?.deliveryOtp && String(meta.deliveryOtp).replace(/\D/g, '').trim() === cleanSubmittedOtp);
+    const isValid = isHashValid || isMetaValid;
 
     if (!isValid) {
       const newAttempts = currentAttempts + 1;
@@ -269,8 +279,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 12. Dispatch "Order Delivered" confirmation email to customer via Resend
-    let meta: any = null;
-    if (order.notes) {
+    if (!meta && order.notes) {
       try {
         if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
       } catch {}

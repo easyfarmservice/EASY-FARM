@@ -91,6 +91,45 @@
   "redemptions": [],
   "auditLogs": [
     {
+      "id": "audit-1795024467669-71",
+      "customer_id": "73d99523-b827-4cd1-bdca-28d128089b89",
+      "action_type": "stamp_awarded",
+      "details": {
+        "orderId": "1145efa4-316f-4207-9c48-dd9e741d1bd4",
+        "cycle_id": "2026-W44",
+        "newStreak": 1,
+        "total_stamps": 1
+      },
+      "reason": "Awarded weekly stamp for delivered order 1145efa4-316f-4207-9c48-dd9e741d1bd4",
+      "created_at": "2026-11-18T17:54:27.669Z"
+    },
+    {
+      "id": "audit-1794667971385-322",
+      "customer_id": "4fc8239c-26a0-45af-a2b7-4b27a85eac01",
+      "action_type": "stamp_awarded",
+      "details": {
+        "orderId": "926c6a40-3abc-427a-b4a5-45eaa7c803b4",
+        "cycle_id": "2026-W46",
+        "newStreak": 1,
+        "total_stamps": 1
+      },
+      "reason": "Awarded weekly stamp for delivered order 926c6a40-3abc-427a-b4a5-45eaa7c803b4",
+      "created_at": "2026-11-14T14:52:51.385Z"
+    },
+    {
+      "id": "audit-1794549114310-839",
+      "customer_id": "2225d229-5509-4da8-b9ea-4ffe9b0937f1",
+      "action_type": "stamp_awarded",
+      "details": {
+        "orderId": "c786e754-4e43-40ef-b243-b9cb0b16a8b9",
+        "cycle_id": "2026-W46",
+        "newStreak": 1,
+        "total_stamps": 1
+      },
+      "reason": "Awarded weekly stamp for delivered order c786e754-4e43-40ef-b243-b9cb0b16a8b9",
+      "created_at": "2026-11-13T05:51:54.310Z"
+    },
+    {
       "id": "audit-1794335935724-990",
       "customer_id": "401e948a-3570-4524-91fb-4ad3703e3727",
       "action_type": "stamp_awarded",
