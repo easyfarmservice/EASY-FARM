@@ -95,18 +95,30 @@ export async function GET(req: NextRequest) {
 
       const profile = Array.isArray(o.profiles) ? o.profiles[0] : o.profiles;
       const addrObj = Array.isArray(o.customer_addresses) ? o.customer_addresses[0] : o.customer_addresses;
+      const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
 
-      const customerName = meta?.customerName || profile?.full_name || 'Resident';
-      const customerEmail = meta?.customerEmail || profile?.email || '';
-      const rawPhone = meta?.customerPhone || profile?.phone || '';
+      const customerName = meta?.customerName || metaAddr?.customerName || profile?.full_name || 'Resident';
+      const customerEmail = meta?.customerEmail || metaAddr?.customerEmail || profile?.email || '';
+      const rawPhone = meta?.customerPhone || metaAddr?.customerPhone || profile?.phone || '';
       const maskedPhone = rawPhone.length >= 10
         ? rawPhone.replace(/(\d{2})\d{4}(\d{4})/, '$1****$2')
         : (rawPhone || 'Not Provided');
 
-      const area = meta?.deliveryZone || addrObj?.locality || 'Ghatkesar';
-      const address = meta?.fullAddress || [addrObj?.apartment, addrObj?.locality]
-        .filter(Boolean)
-        .join(', ') || 'Singapore Township, Ghatkesar';
+      const flatNo = meta?.flatNo || metaAddr?.flatNo || '';
+      const apartment = meta?.apartment || metaAddr?.apartment || addrObj?.apartment || '';
+      const locality = meta?.locality || metaAddr?.locality || addrObj?.locality || '';
+      const pincode = meta?.pincode || metaAddr?.pincode || addrObj?.pincode || '';
+
+      const address =
+        meta?.fullAddress ||
+        metaAddr?.fullAddress ||
+        (typeof meta?.address === 'string' ? meta.address : '') ||
+        addrObj?.full_address ||
+        [flatNo, apartment, locality, pincode ? `PIN ${pincode}` : ''].filter(Boolean).join(', ') ||
+        [addrObj?.apartment, addrObj?.locality].filter(Boolean).join(', ') ||
+        'Singapore Township, Ghatkesar';
+
+      const area = meta?.deliveryZone || metaAddr?.locality || metaAddr?.apartment || addrObj?.locality || 'Ghatkesar';
 
       const metaItems = Array.isArray(meta?.items) ? meta.items : [];
       const dbOrderItems = Array.isArray(o.order_items) ? o.order_items : [];
@@ -200,7 +212,7 @@ export async function GET(req: NextRequest) {
         masked_phone: maskedPhone,
         area,
         delivery_address: address,
-        full_address: meta?.fullAddress || addrObj?.full_address || address,
+        full_address: address,
         amount: Number(o.total || 0),
         status: o.status || 'confirmed',
         delivery_date: o.delivery_date,

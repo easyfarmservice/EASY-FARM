@@ -90,18 +90,23 @@ export async function GET(req: NextRequest) {
         o.status === 'out_for_delivery' ||
         o.status === 'delivered';
 
-      const customerName =
+      const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
+
+      let customerName =
         meta?.customerName ||
+        metaAddr?.customerName ||
         profile?.full_name ||
         'Customer';
 
       let customerPhone =
         meta?.customerPhone ||
+        metaAddr?.customerPhone ||
         profile?.phone ||
         '';
 
       let customerEmail =
         meta?.customerEmail ||
+        metaAddr?.customerEmail ||
         (profile?.email && !profile.email.endsWith('@guest.easyfarm.in') ? profile.email : '') ||
         '';
 
@@ -138,13 +143,15 @@ export async function GET(req: NextRequest) {
         customerEmail = profile.email;
       }
 
-      const flatNo = meta?.flatNo || addrObj?.full_address || '';
-      const apartment = meta?.apartment || addrObj?.apartment || 'Singapore Township';
-      const locality = meta?.locality || addrObj?.locality || 'Ghatkesar & Pocharam, Hyderabad';
-      const pincode = meta?.pincode || addrObj?.pincode || '500088';
+      const flatNo = meta?.flatNo || metaAddr?.flatNo || addrObj?.full_address || '';
+      const apartment = meta?.apartment || metaAddr?.apartment || addrObj?.apartment || 'Singapore Township';
+      const locality = meta?.locality || metaAddr?.locality || addrObj?.locality || 'Ghatkesar & Pocharam, Hyderabad';
+      const pincode = meta?.pincode || metaAddr?.pincode || addrObj?.pincode || '500088';
 
       const address =
         meta?.fullAddress ||
+        metaAddr?.fullAddress ||
+        (typeof meta?.address === 'string' ? meta.address : '') ||
         (addrObj
           ? `${addrObj.full_address || ''}, ${addrObj.apartment || ''}, ${addrObj.locality || ''}, PIN ${addrObj.pincode || ''}`.replace(/^[,\s]+|[,\s]+$/g, '')
           : [flatNo, apartment, locality, pincode ? `PIN ${pincode}` : ''].filter(Boolean).join(', ') || 'Ghatkesar & Pocharam, Hyderabad (Active)');

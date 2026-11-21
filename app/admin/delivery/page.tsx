@@ -253,7 +253,10 @@ export default function DeliveryOperationsPage() {
       const res = await fetch('/api/delivery/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.raw_id }),
+        body: JSON.stringify({
+          order_id: order.raw_id,
+          email: order.customer_email || undefined,
+        }),
       });
       const data = await res.json();
 
@@ -387,7 +390,10 @@ export default function DeliveryOperationsPage() {
       const res = await fetch('/api/delivery/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.raw_id }),
+        body: JSON.stringify({
+          order_id: order.raw_id,
+          email: order.customer_email || undefined,
+        }),
       });
       const data = await res.json();
 

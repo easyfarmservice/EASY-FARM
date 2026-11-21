@@ -92,13 +92,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Validate order status must be out_for_delivery
-    if (order.status !== 'out_for_delivery') {
+    // 4. Validate order status: allow confirmed, ready_for_delivery, packed, out_for_delivery
+    if (order.status === 'delivered') {
       return NextResponse.json(
         {
           success: false,
           error: 'INVALID_STATUS',
-          message: `Cannot resend OTP. Order status is "${order.status}". Resend is only available when Out for Delivery.`,
+          message: 'This order is already marked as delivered.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (order.status === 'cancelled') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: 'Cannot send OTP for a cancelled order.',
         },
         { status: 400 }
       );
@@ -154,9 +165,12 @@ export async function POST(req: NextRequest) {
       customerName: customerName || meta?.customerName,
       customerPhone: customerPhone || meta?.customerPhone,
     };
+    const newStatus = order.status === 'out_for_delivery' ? order.status : 'out_for_delivery';
     const { error: updateErr } = await supabase
       .from('orders')
       .update({
+        status: newStatus,
+        delivery_assigned_at: (order as any).delivery_assigned_at || new Date().toISOString(),
         delivery_otp_hash: newHash,
         otp_created_at: new Date().toISOString(),
         otp_expires_at: newExpiresAt,

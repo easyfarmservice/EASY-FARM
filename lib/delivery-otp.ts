@@ -99,9 +99,11 @@ export async function resolveOrderCustomer(
   order: any,
   meta: any
 ): Promise<ResolvedCustomerContact> {
-  let customerEmail = (meta?.customerEmail || '').trim();
-  let customerPhone = (meta?.customerPhone || '').trim();
-  let customerName = (meta?.customerName || '').trim();
+  const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
+
+  let customerEmail = (meta?.customerEmail || metaAddr?.customerEmail || '').trim();
+  let customerPhone = (meta?.customerPhone || metaAddr?.customerPhone || '').trim();
+  let customerName = (meta?.customerName || metaAddr?.customerName || '').trim();
 
   // 1. Relational profiles join (handles object or array)
   const profile = Array.isArray(order?.profiles) ? order.profiles[0] : order?.profiles;
@@ -146,15 +148,22 @@ export async function resolveOrderCustomer(
     } catch {}
   }
 
-  // 4. Resolve delivery address
+  // 4. Resolve delivery address (handles top-level, nested meta.address, customer_addresses relation)
   const addrObj = Array.isArray(order?.customer_addresses)
     ? order.customer_addresses[0]
     : order?.customer_addresses;
 
+  const flatNo = meta?.flatNo || metaAddr?.flatNo || '';
+  const apartment = meta?.apartment || metaAddr?.apartment || addrObj?.apartment || '';
+  const locality = meta?.locality || metaAddr?.locality || addrObj?.locality || '';
+  const pincode = meta?.pincode || metaAddr?.pincode || addrObj?.pincode || '';
+
   const fullAddress =
     meta?.fullAddress ||
-    meta?.address?.fullAddress ||
+    metaAddr?.fullAddress ||
+    (typeof meta?.address === 'string' ? meta.address : '') ||
     addrObj?.full_address ||
+    [flatNo, apartment, locality, pincode ? `PIN ${pincode}` : ''].filter(Boolean).join(', ') ||
     [addrObj?.apartment, addrObj?.locality].filter(Boolean).join(', ') ||
     'Ghatkesar & Pocharam, Hyderabad';
 
