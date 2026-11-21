@@ -81,3 +81,94 @@ export function normalizeIndianMobile(raw: string): { valid: boolean; normalized
 
   return { valid: true, normalized: mobile };
 }
+
+export interface ResolvedCustomerContact {
+  customerEmail: string;
+  customerPhone: string;
+  customerName: string;
+  fullAddress: string;
+  orderNumber: string;
+}
+
+/**
+ * Robust customer contact resolver:
+ * Checks notes metadata -> relational profiles -> direct profiles table -> auth.users
+ */
+export async function resolveOrderCustomer(
+  supabase: any,
+  order: any,
+  meta: any
+): Promise<ResolvedCustomerContact> {
+  let customerEmail = (meta?.customerEmail || '').trim();
+  let customerPhone = (meta?.customerPhone || '').trim();
+  let customerName = (meta?.customerName || '').trim();
+
+  // 1. Relational profiles join (handles object or array)
+  const profile = Array.isArray(order?.profiles) ? order.profiles[0] : order?.profiles;
+  if (profile) {
+    if (!customerEmail && profile.email) customerEmail = profile.email.trim();
+    if (!customerPhone && profile.phone) customerPhone = profile.phone.trim();
+    if (!customerName && profile.full_name) customerName = profile.full_name.trim();
+  }
+
+  const customerId = order?.customer_id || profile?.id;
+
+  // 2. Query profiles table directly if email is missing
+  if ((!customerEmail || !customerName || !customerPhone) && customerId) {
+    try {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, phone')
+        .eq('id', customerId)
+        .maybeSingle();
+
+      if (prof) {
+        if (!customerEmail && prof.email) customerEmail = prof.email.trim();
+        if (!customerPhone && prof.phone) customerPhone = prof.phone.trim();
+        if (!customerName && prof.full_name) customerName = prof.full_name.trim();
+      }
+    } catch {}
+  }
+
+  // 3. Fallback to Supabase Auth admin users if email is still missing
+  if (!customerEmail && customerId && supabase.auth?.admin) {
+    try {
+      const { data: authData } = await supabase.auth.admin.getUserById(customerId);
+      if (authData?.user?.email) {
+        customerEmail = authData.user.email.trim();
+      }
+      if (!customerName && authData?.user?.user_metadata?.full_name) {
+        customerName = authData.user.user_metadata.full_name.trim();
+      }
+      if (!customerPhone && (authData?.user?.phone || authData?.user?.user_metadata?.phone)) {
+        customerPhone = (authData.user.phone || authData.user.user_metadata.phone).trim();
+      }
+    } catch {}
+  }
+
+  // 4. Resolve delivery address
+  const addrObj = Array.isArray(order?.customer_addresses)
+    ? order.customer_addresses[0]
+    : order?.customer_addresses;
+
+  const fullAddress =
+    meta?.fullAddress ||
+    meta?.address?.fullAddress ||
+    addrObj?.full_address ||
+    [addrObj?.apartment, addrObj?.locality].filter(Boolean).join(', ') ||
+    'Ghatkesar & Pocharam, Hyderabad';
+
+  const orderNumber =
+    meta?.orderNumber || (order?.id ? `EF${order.id.slice(0, 4).toUpperCase()}` : 'EF-ORDER');
+
+  if (!customerName) customerName = 'Valued Customer';
+
+  return {
+    customerEmail,
+    customerPhone,
+    customerName,
+    fullAddress,
+    orderNumber,
+  };
+}
+

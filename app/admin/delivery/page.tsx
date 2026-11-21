@@ -47,6 +47,8 @@ interface DeliveryOrder {
   otp_attempts: number;
   otp_created_at?: string;
   otp_expires_at?: string;
+  delivery_otp?: string | null;
+  created_at?: string;
   delivered_at?: string;
   failure_reason?: string;
   rescheduled_date?: string;
@@ -105,10 +107,11 @@ export default function DeliveryOperationsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Filters
+  // Filters & Sorting
   const [statusTab, setStatusTab] = useState<'ALL' | 'READY' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'today' | 'all'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'date_asc' | 'delivery_asc' | 'delivery_desc'>('newest');
 
   // Inline OTP state for Out for Delivery section
   const [inlineOtps, setInlineOtps] = useState<Record<string, string>>({});
@@ -128,9 +131,9 @@ export default function DeliveryOperationsPage() {
   const [startingDelivery, setStartingDelivery] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
-  // Resend OTP state
-  const [resending, setResending] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
+  // Resend OTP state (strictly isolated per-order)
+  const [resendingOrderId, setResendingOrderId] = useState<string | null>(null);
+  const [resendCooldowns, setResendCooldowns] = useState<Record<string, number>>({});
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Failure modal state
@@ -148,6 +151,21 @@ export default function DeliveryOperationsPage() {
   // Unmask phone state
   const [revealedPhones, setRevealedPhones] = useState<Record<string, boolean>>({});
 
+  // Format date and time in Indian Standard Time (IST)
+  const formatDateTime = (isoStr?: string) => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
   // 1. Fetch live delivery operations list
   const fetchDeliveries = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -158,6 +176,7 @@ export default function DeliveryOperationsPage() {
       if (dateFilter === 'today') params.set('date', 'today');
       if (statusTab !== 'ALL') params.set('status', statusTab);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      params.set('sort', sortBy);
 
       const res = await fetch(`/api/delivery/list?${params.toString()}`);
       const data = await res.json();
@@ -174,20 +193,49 @@ export default function DeliveryOperationsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [dateFilter, statusTab, searchQuery]);
+  }, [dateFilter, statusTab, searchQuery, sortBy]);
 
   useEffect(() => {
     fetchDeliveries();
   }, [fetchDeliveries]);
 
-  // Cooldown timer
+  // Per-order isolated cooldown timer
   useEffect(() => {
-    if (resendCooldown <= 0) return;
+    const hasActive = Object.values(resendCooldowns).some((cd) => cd > 0);
+    if (!hasActive) return;
+
     const interval = setInterval(() => {
-      setResendCooldown((prev) => Math.max(0, prev - 1));
+      setResendCooldowns((prev) => {
+        const next: Record<string, number> = {};
+        for (const [k, v] of Object.entries(prev)) {
+          if (v > 1) next[k] = v - 1;
+        }
+        return next;
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, [resendCooldown]);
+  }, [resendCooldowns]);
+
+  // Strictly sort orders according to date and time
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      if (sortBy === 'date_asc') {
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+      }
+      if (sortBy === 'delivery_asc') {
+        const dDiff = new Date(a.delivery_date || 0).getTime() - new Date(b.delivery_date || 0).getTime();
+        if (dDiff !== 0) return dDiff;
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      if (sortBy === 'delivery_desc') {
+        const dDiff = new Date(b.delivery_date || 0).getTime() - new Date(a.delivery_date || 0).getTime();
+        if (dDiff !== 0) return dDiff;
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+      // 'newest' (default): Order date & time descending
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [orders, sortBy]);
 
   // Notice auto-dismiss
   useEffect(() => {
@@ -216,10 +264,16 @@ export default function DeliveryOperationsPage() {
 
       setStartModalOrder(null);
       const recipientNotice = data.customer_email || order.customer_email || 'customer email';
+      const emailStatusText = data.email_sent
+        ? `Dispatched to ${recipientNotice}.`
+        : `Email delivery notice: ${data.email_error || 'Dispatch issue'}.`;
+      const otpText = data.delivery_otp ? ` (OTP: ${data.delivery_otp})` : '';
+
       setActionNotice({
-        type: 'success',
-        message: `Order #${order.id} is now OUT FOR DELIVERY! 4-digit OTP dispatched to ${recipientNotice}.`,
+        type: data.email_sent ? 'success' : 'error',
+        message: `Order #${order.id} is now OUT FOR DELIVERY!${otpText} ${emailStatusText}`,
       });
+      setInlineOtps((prev) => ({ ...prev, [order.id]: '' }));
       setStatusTab('OUT_FOR_DELIVERY');
       fetchDeliveries(true);
     } catch (err: any) {
@@ -321,10 +375,13 @@ export default function DeliveryOperationsPage() {
     }
   };
 
-  // 4. Action: Resend OTP
+  // 4. Action: Resend OTP (isolated strictly to the selected order)
   const handleResendOtp = async (order: DeliveryOrder) => {
-    if (resendCooldown > 0) return;
-    setResending(true);
+    const orderKey = order.id;
+    if ((resendCooldowns[orderKey] || 0) > 0) return;
+    if (resendingOrderId) return;
+
+    setResendingOrderId(orderKey);
 
     try {
       const res = await fetch('/api/delivery/resend-otp', {
@@ -337,23 +394,30 @@ export default function DeliveryOperationsPage() {
       if (!res.ok || !data.success) {
         setActionNotice({
           type: 'error',
-          message: data.message || 'Unable to resend OTP at this time.',
+          message: data.message || `Unable to resend OTP for Order #${order.id}.`,
         });
         return;
       }
 
-      setResendCooldown(30);
+      setResendCooldowns((prev) => ({ ...prev, [orderKey]: 30 }));
+      setInlineOtps((prev) => ({ ...prev, [order.id]: '' }));
       setOtpInput('');
       setVerifyError(null);
+      const targetEmail = data.customer_email || order.customer_email || order.customer_name;
+      const emailStatusText = data.email_sent
+        ? `Sent strictly to ${targetEmail}.`
+        : `Email delivery notice: ${data.email_error || 'Dispatch issue'}.`;
+      const otpText = data.delivery_otp ? ` New OTP: ${data.delivery_otp}.` : '';
+
       setActionNotice({
-        type: 'success',
-        message: `New OTP generated and sent to ${order.customer_name}'s mobile. Previous OTP invalidated.`,
+        type: data.email_sent ? 'success' : 'error',
+        message: `Order #${order.id} OTP Resent!${otpText} ${emailStatusText}`,
       });
       fetchDeliveries(true);
     } catch (err: any) {
-      setActionNotice({ type: 'error', message: 'Failed to resend OTP: ' + err.message });
+      setActionNotice({ type: 'error', message: `Failed to resend OTP for #${order.id}: ` + err.message });
     } finally {
-      setResending(false);
+      setResendingOrderId(null);
     }
   };
 
@@ -678,6 +742,21 @@ export default function DeliveryOperationsPage() {
                 <option value="today">Today's Deliveries</option>
               </select>
             </div>
+
+            {/* Sort by Date & Time */}
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                title="Sort deliveries by Date & Time"
+              >
+                <option value="newest">🕒 Sort: Newest First (Date & Time)</option>
+                <option value="date_asc">🕒 Sort: Oldest First (Date & Time)</option>
+                <option value="delivery_asc">🚚 Sort: Delivery Date (Earliest)</option>
+                <option value="delivery_desc">🚚 Sort: Delivery Date (Latest)</option>
+              </select>
+            </div>
           </div>
 
           {/* Status Filter Tabs */}
@@ -709,7 +788,7 @@ export default function DeliveryOperationsPage() {
           <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center">
             <EasyFarmLoader size="md" text="Loading Delivery Operations" subtitle="Synchronizing orders with Supabase" />
           </div>
-        ) : orders.length === 0 ? (
+        ) : sortedOrders.length === 0 ? (
           <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center mx-auto">
               <Truck className="w-6 h-6" />
@@ -736,7 +815,7 @@ export default function DeliveryOperationsPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                   <tr>
-                    <th className="py-3.5 px-4">Order ID</th>
+                    <th className="py-3.5 px-4">Order ID &amp; Time</th>
                     <th className="py-3.5 px-4">Customer &amp; Phone</th>
                     <th className="py-3.5 px-4">Area &amp; Destination</th>
                     <th className="py-3.5 px-4">Amount</th>
@@ -746,7 +825,7 @@ export default function DeliveryOperationsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {orders.map((o) => {
+                  {sortedOrders.map((o) => {
                     const isOut = o.status === 'out_for_delivery';
                     const isReady =
                       o.status === 'ready_for_delivery' || o.status === 'confirmed' || o.status === 'packed';
@@ -760,7 +839,7 @@ export default function DeliveryOperationsPage() {
                           isOut ? 'bg-amber-50/30' : ''
                         }`}
                       >
-                        {/* Order ID */}
+                        {/* Order ID & Time */}
                         <td className="py-4 px-4 font-mono font-black text-slate-900">
                           <button
                             onClick={() => setSelectedOrder(o)}
@@ -768,8 +847,12 @@ export default function DeliveryOperationsPage() {
                           >
                             <span>#{o.id}</span>
                           </button>
+                          <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3 text-emerald-700 shrink-0" />
+                            <span>{formatDateTime(o.created_at) || o.delivery_date}</span>
+                          </div>
                           <div className="text-[10px] text-slate-400 font-normal">
-                            {new Date(o.delivery_date).toLocaleDateString('en-IN', {
+                            Delivery: {new Date(o.delivery_date).toLocaleDateString('en-IN', {
                               month: 'short',
                               day: 'numeric',
                             })}
@@ -853,7 +936,7 @@ export default function DeliveryOperationsPage() {
                         <td className="py-4 px-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             {isOut && (
-                              <div className="flex flex-col items-end gap-1">
+                              <div className="flex flex-col items-end gap-1.5">
                                 <div className="flex items-center gap-1.5">
                                   <input
                                     type="text"
@@ -893,6 +976,26 @@ export default function DeliveryOperationsPage() {
                                     <ShieldCheck className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResendOtp(o)}
+                                    disabled={resendingOrderId === o.id || (resendCooldowns[o.id] || 0) > 0}
+                                    className="text-[10px] font-bold text-amber-900 hover:underline flex items-center gap-1"
+                                  >
+                                    {resendingOrderId === o.id && <RotateCcw className="w-3 h-3 animate-spin" />}
+                                    <span>
+                                      {(resendCooldowns[o.id] || 0) > 0
+                                        ? `Resend (${resendCooldowns[o.id]}s)`
+                                        : 'Resend Code'}
+                                    </span>
+                                  </button>
+                                  {o.delivery_otp && (
+                                    <span className="font-mono font-bold text-[10px] text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                      OTP: {o.delivery_otp}
+                                    </span>
+                                  )}
+                                </div>
                                 {inlineErrors[o.id] && (
                                   <div className="text-[10px] text-red-600 font-bold">{inlineErrors[o.id]}</div>
                                 )}
@@ -929,7 +1032,7 @@ export default function DeliveryOperationsPage() {
 
             {/* MOBILE CARD VIEW (Optimized for Founder on phone at customer door) */}
             <div className="lg:hidden space-y-3">
-              {orders.map((o) => {
+              {sortedOrders.map((o) => {
                 const isOut = o.status === 'out_for_delivery';
                 const isReady =
                   o.status === 'ready_for_delivery' || o.status === 'confirmed' || o.status === 'packed';
@@ -945,11 +1048,17 @@ export default function DeliveryOperationsPage() {
                   >
                     {/* Top Row: Order ID + Status */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-base text-slate-900">
-                          #{o.id}
-                        </span>
-                        <span className="text-xs font-bold text-slate-500">₹{o.amount.toFixed(0)}</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-base text-slate-900">
+                            #{o.id}
+                          </span>
+                          <span className="text-xs font-bold text-slate-500">₹{o.amount.toFixed(0)}</span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-emerald-700 shrink-0" />
+                          <span>{formatDateTime(o.created_at) || o.delivery_date}</span>
+                        </div>
                       </div>
                       <div>{renderStatusBadge(o.status)}</div>
                     </div>
@@ -995,27 +1104,62 @@ export default function DeliveryOperationsPage() {
 
                     {/* Inline OTP Verification for Mobile Out for Delivery */}
                     {isOut && (
-                      <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="bg-amber-50/90 border border-amber-300/80 rounded-2xl p-3.5 space-y-2.5">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-black text-amber-950 flex items-center gap-1.5">
                             <ShieldCheck className="w-4 h-4 text-amber-600" />
-                            Ask Customer for OTP
+                            Delivery Handover OTP
                           </span>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-md">
+                            Ask customer for OTP
+                          </span>
+                        </div>
+
+                        {/* Quick action row: WhatsApp Customer + Resend */}
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                          {o.phone && (
+                            <a
+                              href={`https://wa.me/${o.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                                `Hi ${o.customer_name}, your Easy Farm harvest delivery partner has arrived at your doorstep. ${
+                                  o.delivery_otp
+                                    ? `Your 4-digit Delivery Handover OTP is ${o.delivery_otp}.`
+                                    : 'Please share the 4-digit Delivery OTP sent to your registered email.'
+                                }`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-1 px-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-extrabold text-xs rounded-lg transition flex items-center gap-1"
+                            >
+                              <span>💬 Notify on WhatsApp</span>
+                            </a>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleResendOtp(o)}
-                            disabled={resending || resendCooldown > 0}
-                            className="text-[11px] font-bold text-emerald-800 hover:underline"
+                            disabled={resendingOrderId === o.id || (resendCooldowns[o.id] || 0) > 0}
+                            className="text-[11px] font-bold text-amber-900 hover:underline ml-auto flex items-center gap-1"
                           >
-                            {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend OTP to Email'}
+                            {resendingOrderId === o.id && <RotateCcw className="w-3 h-3 animate-spin" />}
+                            <span>
+                              {(resendCooldowns[o.id] || 0) > 0
+                                ? `Resend (${resendCooldowns[o.id]}s)`
+                                : 'Resend Code'}
+                            </span>
                           </button>
                         </div>
 
-                        {o.customer_email && (
-                          <p className="text-[11px] text-amber-800 font-medium">
-                            Dispatched to: <strong className="font-bold">{o.customer_email}</strong>
-                          </p>
-                        )}
+                        <div className="flex items-center justify-between text-[11px] text-amber-800 font-medium">
+                          {o.customer_email ? (
+                            <span>Dispatched to: <strong className="font-bold">{o.customer_email}</strong></span>
+                          ) : (
+                            <span className="text-amber-700 italic">No registered email found</span>
+                          )}
+                          {o.delivery_otp && (
+                            <span className="font-mono font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded border border-emerald-300">
+                              OTP: {o.delivery_otp}
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-2">
                           <input
@@ -1210,6 +1354,11 @@ export default function DeliveryOperationsPage() {
 
                     <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
                       <span>Max 5 attempts allowed</span>
+                      {verifyModalOrder.delivery_otp && (
+                        <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                          OTP: {verifyModalOrder.delivery_otp}
+                        </span>
+                      )}
                       {verifyModalOrder.otp_attempts > 0 && (
                         <span className="text-amber-700 font-semibold">
                           Attempts used: {verifyModalOrder.otp_attempts}/5
@@ -1248,13 +1397,13 @@ export default function DeliveryOperationsPage() {
                       <button
                         type="button"
                         onClick={() => handleResendOtp(verifyModalOrder)}
-                        disabled={resending || resendCooldown > 0}
+                        disabled={resendingOrderId === verifyModalOrder.id || (resendCooldowns[verifyModalOrder.id] || 0) > 0}
                         className="text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline flex items-center gap-1 disabled:text-slate-400 p-1"
                       >
-                        <RotateCcw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
+                        <RotateCcw className={`w-3.5 h-3.5 ${resendingOrderId === verifyModalOrder.id ? 'animate-spin' : ''}`} />
                         <span>
-                          {resendCooldown > 0
-                            ? `Resend OTP in ${resendCooldown}s`
+                          {(resendCooldowns[verifyModalOrder.id] || 0) > 0
+                            ? `Resend OTP in ${resendCooldowns[verifyModalOrder.id]}s`
                             : 'Resend OTP to Customer'}
                         </span>
                       </button>
@@ -1657,11 +1806,15 @@ export default function DeliveryOperationsPage() {
 
                     <button
                       onClick={() => handleResendOtp(selectedOrder)}
-                      disabled={resending || resendCooldown > 0}
+                      disabled={resendingOrderId === selectedOrder.id || (resendCooldowns[selectedOrder.id] || 0) > 0}
                       className="w-full py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2"
                     >
-                      <RotateCcw className={`w-3.5 h-3.5 ${resending ? 'animate-spin' : ''}`} />
-                      <span>{resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP (MSG91)'}</span>
+                      <RotateCcw className={`w-3.5 h-3.5 ${resendingOrderId === selectedOrder.id ? 'animate-spin' : ''}`} />
+                      <span>
+                        {(resendCooldowns[selectedOrder.id] || 0) > 0
+                          ? `Resend OTP in ${resendCooldowns[selectedOrder.id]}s`
+                          : 'Resend OTP to Customer'}
+                      </span>
                     </button>
                   </>
                 )}

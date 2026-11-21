@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminAuth } from '@/lib/security/auth-guard';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateDeliveryOtp, hashDeliveryOtp, getDeliveryOtpExpiry } from '@/lib/delivery-otp';
+import {
+  generateDeliveryOtp,
+  hashDeliveryOtp,
+  getDeliveryOtpExpiry,
+  resolveOrderCustomer,
+} from '@/lib/delivery-otp';
 import { sendDeliveryOTP } from '@/lib/msg91';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
 import { EmailService } from '@/services/email.service';
@@ -50,6 +55,7 @@ export async function POST(req: NextRequest) {
       .from('orders')
       .select(`
         id,
+        customer_id,
         status,
         notes,
         delivery_otp_hash,
@@ -117,33 +123,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Extract customer details
+    // 6. Extract customer details via robust resolver (notes, profiles, and auth.users)
     let meta: any = null;
     if (order.notes) {
       try {
         if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
-      } catch {}
+      } catch { }
     }
 
-    const customerEmail = meta?.customerEmail || (order.profiles as any)?.email || '';
-    const customerPhone = meta?.customerPhone || (order.profiles as any)?.phone || '';
-    const customerName = meta?.customerName || (order.profiles as any)?.full_name || 'Resident';
-    const deliveryAddress =
-      meta?.fullAddress ||
-      (order.customer_addresses as any)?.full_address ||
-      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
-        .filter(Boolean)
-        .join(', ') ||
-      'Ghatkesar & Pocharam, Hyderabad (Active)';
-
-    const displayOrderId = meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
+    const customer = await resolveOrderCustomer(supabase, order, meta);
+    const customEmailOverride = String(body.email || body.customer_email || '').trim().toLowerCase();
+    const customerEmail = (customEmailOverride && customEmailOverride.includes('@'))
+      ? customEmailOverride
+      : (customer.customerEmail || '').trim().toLowerCase();
+    const customerPhone = customer.customerPhone;
+    const customerName = customer.customerName;
+    const deliveryAddress = customer.fullAddress;
+    const displayOrderId = customer.orderNumber;
 
     // 7. Generate new secure 4-digit OTP & Hash
     const newOtp = generateDeliveryOtp();
     const newHash = hashDeliveryOtp(newOtp);
     const newExpiresAt = getDeliveryOtpExpiry();
 
-    // 8. Overwrite hash in database, reset attempts to 0, reset timestamps
+    // 8. Overwrite hash in database, reset attempts to 0, save resolved customer details
+    meta = {
+      ...(meta || {}),
+      deliveryOtp: newOtp,
+      customerEmail: customerEmail || meta?.customerEmail,
+      customerName: customerName || meta?.customerName,
+      customerPhone: customerPhone || meta?.customerPhone,
+    };
     const { error: updateErr } = await supabase
       .from('orders')
       .update({
@@ -152,6 +162,7 @@ export async function POST(req: NextRequest) {
         otp_expires_at: newExpiresAt,
         otp_verified: false,
         otp_attempts: 0,
+        notes: JSON.stringify(meta),
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
@@ -165,20 +176,21 @@ export async function POST(req: NextRequest) {
 
     resendCooldowns.set(order.id, Date.now());
 
-    // 9. Dispatch new OTP to Email
-    let emailSent = false;
+    // 9. Dispatch new OTP to Email (strictly for this single customer)
+    let emailResult: any = { success: false, error: '' };
     if (customerEmail) {
       try {
-        const emailRes = await EmailService.sendDeliveryOtpEmail({
+        console.log(`[ResendOTP] Resending 4-digit OTP strictly for Order ${order.id} to recipient: ${customerEmail}`);
+        emailResult = await EmailService.sendDeliveryOtpEmail({
           toEmail: customerEmail,
           recipientName: customerName,
           orderId: displayOrderId,
           otp: newOtp,
           deliveryAddress,
         });
-        emailSent = emailRes.success;
-      } catch (e) {
+      } catch (e: any) {
         console.error('[ResendOTP] Email error:', e);
+        emailResult = { success: false, error: e.message };
       }
     }
 
@@ -191,19 +203,43 @@ export async function POST(req: NextRequest) {
           otp: newOtp,
           orderId: displayOrderId,
         });
-      } catch (e) {}
+      } catch (e: any) {
+        smsResult = { success: false, error: e.message };
+      }
     }
 
-    const destinationNotice = customerEmail ? `sent to ${customerEmail}` : `sent via SMS`;
+    // 11. Record audit logs
+    await recordDeliveryAuditLog({
+      adminId: auth.user?.id,
+      adminName: auth.profile?.full_name || auth.user?.email || 'Admin',
+      action: 'DELIVERY_OTP_SENT',
+      orderId: order.id,
+      details: {
+        action: 'RESEND_OTP',
+        channel: customerEmail ? 'EMAIL' : 'SMS',
+        recipient: customerEmail || customerPhone,
+        email_sent: Boolean(emailResult.success),
+        email_error: emailResult.success ? null : (emailResult.error || null),
+        sms_sent: Boolean(smsResult.success),
+      },
+    });
+
+    const destinationNotice = emailResult.success
+      ? `sent to registered email (${customerEmail})`
+      : customerEmail
+      ? `generated (Email delivery failed: ${emailResult.error || 'Check sender configuration'})`
+      : `sent via SMS`;
+
     return NextResponse.json({
       success: true,
-      message: `Fresh 4-digit OTP generated and ${destinationNotice}.`,
+      message: `Fresh 4-digit Handover OTP generated and ${destinationNotice}.`,
       order_id: order.id,
       customer_email: customerEmail,
-      email_sent: emailSent,
+      email_sent: Boolean(emailResult.success),
+      email_error: emailResult.success ? null : (emailResult.error || 'Email dispatch failed'),
+      delivery_otp: newOtp,
       expires_at: newExpiresAt,
       sms_simulated: smsResult.simulated || false,
-      test_otp: newOtp,
     });
   } catch (err: any) {
     console.error('[ResendOTP] Exception:', err);

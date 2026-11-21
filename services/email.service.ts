@@ -1,4 +1,4 @@
-import { getResendClient, isResendConfigured } from '@/lib/resend';
+import { getResendClient, getResendFromEmail, isResendConfigured } from '@/lib/resend';
 
 export interface SendOrderEmailParams {
   toEmail: string;
@@ -65,7 +65,7 @@ export interface SendOrderDeliveredParams {
 
 export class EmailService {
   /**
-   * Safe email dispatch helper — always sends from RESEND_FROM_EMAIL (env var).
+   * Safe email dispatch helper — always sends from verified sender Easy Farm <business@easyfarm.co.in>.
    */
   private static async sendWithFallback(emailPayload: {
     from?: string;
@@ -74,23 +74,36 @@ export class EmailService {
     html: string;
   }) {
     const resend = getResendClient();
-    const primaryFrom = emailPayload.from || process.env.RESEND_FROM_EMAIL || 'Easy Farm <business@easyfarm.co.in>';
+    let primaryFrom = emailPayload.from || getResendFromEmail();
+    if (!primaryFrom || primaryFrom.includes('resend.dev') || primaryFrom.includes('onboarding@')) {
+      primaryFrom = 'Easy Farm <business@easyfarm.co.in>';
+    }
+
+    const cleanTo = (emailPayload.to || [])
+      .map((e) => (typeof e === 'string' ? e.trim().toLowerCase() : ''))
+      .filter((e) => e.length > 3 && e.includes('@'));
+
+    if (cleanTo.length === 0) {
+      console.warn('[EmailService] Aborting dispatch: no valid recipient email specified.');
+      return { success: false, error: 'No valid recipient email specified' };
+    }
 
     try {
       const response = await resend.emails.send({
         ...emailPayload,
+        to: cleanTo,
         from: primaryFrom,
       });
 
       if (response.error) {
-        console.warn(`Primary email dispatch (${primaryFrom}) returned error:`, response.error);
-
+        console.warn(`[EmailService] Email dispatch failed from (${primaryFrom}) to (${cleanTo.join(', ')}):`, response.error);
         return { success: false, error: response.error.message };
       }
 
+      console.log(`[EmailService] Successfully dispatched email to ${cleanTo.join(', ')} from ${primaryFrom} (id: ${response.data?.id})`);
       return { success: true, id: response.data?.id };
     } catch (err: any) {
-      console.error('Resend email exception:', err);
+      console.error('[EmailService] Resend exception:', err);
       return { success: false, error: err.message || 'Unknown email error' };
     }
   }
@@ -257,6 +270,11 @@ export class EmailService {
   static async sendDeliveryOtpEmail(params: SendDeliveryOtpParams) {
     if (!isResendConfigured()) {
       return { success: false, reason: 'API key not configured' };
+    }
+
+    const cleanEmail = (params.toEmail || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Invalid or missing customer email address' };
     }
 
     try {

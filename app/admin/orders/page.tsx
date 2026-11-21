@@ -230,23 +230,25 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const filteredOrders = orders.filter((o) => {
-    const term = searchTerm.toLowerCase();
-    const matchesSearch =
-      o.id.toLowerCase().includes(term) ||
-      o.customer_name.toLowerCase().includes(term) ||
-      o.customer_phone.toLowerCase().includes(term) ||
-      (o.customer_email && o.customer_email.toLowerCase().includes(term)) ||
-      o.address.toLowerCase().includes(term) ||
-      (o.payment_id && o.payment_id.toLowerCase().includes(term));
+  const filteredOrders = orders
+    .filter((o) => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch =
+        o.id.toLowerCase().includes(term) ||
+        o.customer_name.toLowerCase().includes(term) ||
+        o.customer_phone.toLowerCase().includes(term) ||
+        (o.customer_email && o.customer_email.toLowerCase().includes(term)) ||
+        o.address.toLowerCase().includes(term) ||
+        (o.payment_id && o.payment_id.toLowerCase().includes(term));
 
-    const matchesStatus =
-      statusFilter === 'ALL' ||
-      (statusFilter === 'paid' && o.payment_status === 'paid') ||
-      o.status.toLowerCase() === statusFilter.toLowerCase();
+      const matchesStatus =
+        statusFilter === 'ALL' ||
+        (statusFilter === 'paid' && o.payment_status === 'paid') ||
+        o.status.toLowerCase() === statusFilter.toLowerCase();
 
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
   return (
     <AdminLayout>

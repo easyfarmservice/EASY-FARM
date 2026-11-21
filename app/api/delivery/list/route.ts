@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url);
+    const sortParam = searchParams.get('sort') || 'newest';
     const statusFilter = searchParams.get('status')?.toUpperCase() || 'ALL';
     const searchQuery = searchParams.get('search')?.toLowerCase().trim() || '';
     const dateParam = searchParams.get('date'); // e.g. 'today' or YYYY-MM-DD
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
       .from('orders')
       .select(`
         id,
+        customer_id,
         status,
         total,
         delivery_date,
@@ -210,6 +212,8 @@ export async function GET(req: NextRequest) {
         otp_attempts: o.otp_attempts || 0,
         otp_created_at: o.otp_created_at,
         otp_expires_at: o.otp_expires_at,
+        delivery_otp: meta?.deliveryOtp || null,
+        created_at: o.created_at,
         delivered_at: o.delivered_at,
         failure_reason: o.failure_reason,
         rescheduled_date: o.rescheduled_date,
@@ -265,30 +269,52 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Sort by operational priority:
-    // 1. OUT_FOR_DELIVERY first
-    // 2. READY_FOR_DELIVERY / CONFIRMED / PACKED next
-    // 3. DELIVERED
-    // 4. FAILED / CANCELLED
-    const priorityWeight: Record<string, number> = {
-      out_for_delivery: 1,
-      ready_for_delivery: 2,
-      packed: 3,
-      confirmed: 4,
-      processing: 5,
-      pending_payment: 6,
-      delivered: 7,
-      failed: 8,
-      delivery_failed: 8,
-      cancelled: 9,
-    };
+    // Sort according to requested sort option (date & time):
+    if (sortParam === 'date_asc' || sortParam === 'oldest') {
+      // Oldest order date and time first
+      filtered.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    } else if (sortParam === 'date_desc') {
+      // Pure date and time descending (newest order first)
+      filtered.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    } else if (sortParam === 'delivery_asc') {
+      // Earliest delivery date first, secondary order date/time
+      filtered.sort((a, b) => {
+        const dDiff = new Date(a.delivery_date || 0).getTime() - new Date(b.delivery_date || 0).getTime();
+        if (dDiff !== 0) return dDiff;
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      });
+    } else if (sortParam === 'delivery_desc') {
+      // Latest delivery date first, secondary order date/time
+      filtered.sort((a, b) => {
+        const dDiff = new Date(b.delivery_date || 0).getTime() - new Date(a.delivery_date || 0).getTime();
+        if (dDiff !== 0) return dDiff;
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      });
+    } else {
+      // Default 'newest': Group by operational priority first, then strictly sort by created_at date & time descending
+      const priorityWeight: Record<string, number> = {
+        out_for_delivery: 1,
+        ready_for_delivery: 2,
+        packed: 3,
+        confirmed: 4,
+        processing: 5,
+        pending_payment: 6,
+        delivered: 7,
+        failed: 8,
+        delivery_failed: 8,
+        cancelled: 9,
+      };
 
-    filtered.sort((a, b) => {
-      const pA = priorityWeight[a.status] || 99;
-      const pB = priorityWeight[b.status] || 99;
-      if (pA !== pB) return pA - pB;
-      return b.raw_id.localeCompare(a.raw_id);
-    });
+      filtered.sort((a, b) => {
+        const pA = priorityWeight[a.status] || 99;
+        const pB = priorityWeight[b.status] || 99;
+        if (pA !== pB) return pA - pB;
+        // Strictly sort by date and time (newest first)
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
+    }
 
     return NextResponse.json({
       success: true,

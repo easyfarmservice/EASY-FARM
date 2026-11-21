@@ -4,6 +4,13 @@ import { EmailService } from '@/services/email.service';
 import { WeeklyStreakService } from '@/services/weekly-streak.service';
 import { EasyCoinsService } from '@/services/easy-coins.service';
 import { verifyAdminAuth } from '@/lib/security/auth-guard';
+import {
+  generateDeliveryOtp,
+  hashDeliveryOtp,
+  getDeliveryOtpExpiry,
+  resolveOrderCustomer,
+} from '@/lib/delivery-otp';
+import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminAuth(req);
@@ -351,8 +358,24 @@ export async function PATCH(req: NextRequest) {
         meta.timeline.harvested_at = nowIso;
       } else if (status === 'packed' && !meta.timeline.packed_at) {
         meta.timeline.packed_at = nowIso;
-      } else if (status === 'out_for_delivery' && !meta.timeline.out_for_delivery_at) {
-        meta.timeline.out_for_delivery_at = nowIso;
+      } else if (status === 'out_for_delivery') {
+        if (!meta.timeline.out_for_delivery_at) {
+          meta.timeline.out_for_delivery_at = nowIso;
+        }
+        const plainOtp = generateDeliveryOtp();
+        const otpHash = hashDeliveryOtp(plainOtp);
+        const otpExpiresAt = getDeliveryOtpExpiry();
+
+        updateData.delivery_otp_hash = otpHash;
+        updateData.otp_created_at = nowIso;
+        updateData.otp_expires_at = otpExpiresAt;
+        updateData.otp_verified = false;
+        updateData.otp_attempts = 0;
+        updateData.delivery_assigned_at = nowIso;
+        updateData.delivery_person_type = 'FOUNDER';
+        updateData.delivery_person_name = auth.profile?.full_name || 'Founder / Admin';
+
+        meta.deliveryOtp = plainOtp;
       } else if (status === 'delivered') {
         meta.timeline.delivered_at = nowIso;
         updateData.delivered_at = nowIso;
@@ -429,6 +452,57 @@ export async function PATCH(req: NextRequest) {
         });
       } catch (revCoinErr) {
         console.warn('[Admin Orders PATCH] Easy Coins reversal warning:', revCoinErr);
+      }
+    }
+
+    // 1.8 If order was set to out_for_delivery, dispatch 4-digit Handover OTP to customer registered email
+    if (status === 'out_for_delivery' && parsedMeta?.deliveryOtp) {
+      try {
+        let orderQuery = supabase
+          .from('orders')
+          .select(`
+            id,
+            customer_id,
+            status,
+            notes,
+            profiles(id, full_name, phone, email),
+            customer_addresses(full_address, apartment, locality)
+          `);
+
+        if (orderId.length === 36 && orderId.includes('-')) {
+          orderQuery = orderQuery.eq('id', orderId);
+        } else {
+          orderQuery = orderQuery.ilike('notes', `%${orderId}%`);
+        }
+
+        const { data: matchedOrder } = await orderQuery.maybeSingle();
+        const customer = await resolveOrderCustomer(supabase, matchedOrder || currentOrd, parsedMeta);
+
+        if (customer.customerEmail) {
+          const emailRes = await EmailService.sendDeliveryOtpEmail({
+            toEmail: customer.customerEmail,
+            recipientName: customer.customerName,
+            orderId: customer.orderNumber,
+            otp: parsedMeta.deliveryOtp,
+            deliveryAddress: customer.fullAddress,
+          });
+
+          await recordDeliveryAuditLog({
+            adminId: auth.user?.id,
+            adminName: auth.profile?.full_name || auth.user?.email || 'Admin',
+            action: emailRes.success ? 'DELIVERY_OTP_SENT' : 'DELIVERY_OTP_FAILED',
+            orderId: currentOrd?.id || orderId,
+            details: {
+              source: 'ADMIN_ORDERS_STATUS_DROPDOWN',
+              channel: 'EMAIL',
+              recipient: customer.customerEmail,
+              email_sent: Boolean(emailRes.success),
+              email_error: emailRes.success ? null : ((emailRes as any).error || (emailRes as any).reason || null),
+            },
+          });
+        }
+      } catch (otpDispatchErr) {
+        console.error('[Admin Orders PATCH] Error sending out_for_delivery OTP email:', otpDispatchErr);
       }
     }
 

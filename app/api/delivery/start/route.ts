@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminAuth } from '@/lib/security/auth-guard';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateDeliveryOtp, hashDeliveryOtp, getDeliveryOtpExpiry } from '@/lib/delivery-otp';
+import {
+  generateDeliveryOtp,
+  hashDeliveryOtp,
+  getDeliveryOtpExpiry,
+  resolveOrderCustomer,
+} from '@/lib/delivery-otp';
 import { sendDeliveryOTP } from '@/lib/msg91';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
 import { EmailService } from '@/services/email.service';
@@ -47,6 +52,7 @@ export async function POST(req: NextRequest) {
       .from('orders')
       .select(`
         id,
+        customer_id,
         status,
         total,
         delivery_date,
@@ -101,7 +107,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Parse customer details from notes metadata or relational tables
+    // 5. Parse customer details from notes metadata, profiles table, and auth.users
     let meta: any = null;
     if (order.notes) {
       try {
@@ -111,38 +117,22 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    const customerEmail =
-      meta?.customerEmail ||
-      (order.profiles as any)?.email ||
-      '';
-
-    const customerPhone =
-      meta?.customerPhone ||
-      (order.profiles as any)?.phone ||
-      '';
-
-    const customerName =
-      meta?.customerName ||
-      (order.profiles as any)?.full_name ||
-      'Valued Resident';
-
-    const deliveryAddress =
-      meta?.fullAddress ||
-      (order.customer_addresses as any)?.full_address ||
-      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
-        .filter(Boolean)
-        .join(', ') ||
-      'Ghatkesar & Pocharam, Hyderabad (Active)';
-
-    const displayOrderId =
-      meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
+    const customer = await resolveOrderCustomer(supabase, order, meta);
+    const customEmailOverride = String(body.email || body.customer_email || '').trim().toLowerCase();
+    const customerEmail = (customEmailOverride && customEmailOverride.includes('@'))
+      ? customEmailOverride
+      : (customer.customerEmail || '').trim().toLowerCase();
+    const customerPhone = customer.customerPhone;
+    const customerName = customer.customerName;
+    const deliveryAddress = customer.fullAddress;
+    const displayOrderId = customer.orderNumber;
 
     if (!customerEmail && !customerPhone) {
       return NextResponse.json(
         {
           success: false,
           error: 'MISSING_CONTACT',
-          message: 'Customer email or phone number is required to send delivery OTP.',
+          message: 'Customer registered email or phone number is required to send delivery OTP.',
         },
         { status: 400 }
       );
@@ -155,6 +145,15 @@ export async function POST(req: NextRequest) {
     const otpHash = hashDeliveryOtp(plainOtp);
     const otpExpiresAt = getDeliveryOtpExpiry();
     const adminName = auth.profile?.full_name || auth.user?.email || 'Founder / Admin';
+
+    // Store deliveryOtp and resolved customer credentials in notes so subsequent reads are immediate
+    meta = {
+      ...(meta || {}),
+      deliveryOtp: plainOtp,
+      customerEmail: customerEmail || meta?.customerEmail,
+      customerName: customerName || meta?.customerName,
+      customerPhone: customerPhone || meta?.customerPhone,
+    };
 
     // 8. Atomic database update
     const { error: updateErr } = await supabase
@@ -169,6 +168,7 @@ export async function POST(req: NextRequest) {
         delivery_person_type: 'FOUNDER',
         delivery_person_name: adminName,
         delivery_assigned_at: new Date().toISOString(),
+        notes: JSON.stringify(meta),
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
@@ -223,10 +223,38 @@ export async function POST(req: NextRequest) {
         customer_email: customerEmail,
         customer_phone: customerPhone,
         status: 'out_for_delivery',
-        email_sent: emailResult.success,
-        sms_sent: smsResult.success,
+        email_sent: Boolean(emailResult.success),
+        email_error: emailResult.success ? null : (emailResult.error || 'Failed'),
+        sms_sent: Boolean(smsResult.success),
       },
     });
+
+    if (emailResult.success) {
+      await recordDeliveryAuditLog({
+        adminId: auth.user?.id,
+        adminName,
+        action: 'DELIVERY_OTP_SENT',
+        orderId: order.id,
+        details: {
+          channel: 'EMAIL',
+          recipient: customerEmail,
+          gateway: 'Resend',
+        },
+      });
+    } else if (customerEmail) {
+      await recordDeliveryAuditLog({
+        adminId: auth.user?.id,
+        adminName,
+        action: 'DELIVERY_OTP_FAILED',
+        orderId: order.id,
+        details: {
+          channel: 'EMAIL',
+          recipient: customerEmail,
+          gateway: 'Resend',
+          error: emailResult.error || 'Email dispatch failed',
+        },
+      });
+    }
 
     if (smsResult.success) {
       await recordDeliveryAuditLog({
@@ -235,35 +263,32 @@ export async function POST(req: NextRequest) {
         action: 'DELIVERY_OTP_SENT',
         orderId: order.id,
         details: {
+          channel: 'SMS',
           gateway: 'MSG91',
           simulated: smsResult.simulated || false,
         },
       });
-    } else {
-      await recordDeliveryAuditLog({
-        adminId: auth.user?.id,
-        adminName,
-        action: 'DELIVERY_OTP_FAILED',
-        orderId: order.id,
-        details: {
-          gateway_error: smsResult.error,
-        },
-      });
     }
 
-    // 12. Return response
-    const destinationNotice = customerEmail ? `sent to ${customerEmail}` : `sent via SMS to ${customerPhone}`;
+    // 12. Return response with fallback delivery OTP for authenticated admin
+    const destinationNotice = emailResult.success
+      ? `sent to registered email (${customerEmail})`
+      : customerEmail
+      ? `generated (Email delivery notice: ${emailResult.error || 'Failed to dispatch via Resend'})`
+      : `sent via SMS to ${customerPhone}`;
+
     return NextResponse.json({
       success: true,
-      message: `Delivery started! 4-digit OTP generated and ${destinationNotice}.`,
+      message: `Delivery started! 4-digit Handover OTP ${destinationNotice}.`,
       order_id: order.id,
       status: 'out_for_delivery',
       expires_at: otpExpiresAt,
       customer_email: customerEmail,
       customer_phone: customerPhone,
-      email_sent: emailResult.success,
+      email_sent: Boolean(emailResult.success),
+      email_error: emailResult.success ? null : (emailResult.error || 'Email dispatch failed'),
+      delivery_otp: plainOtp,
       sms_simulated: smsResult.simulated || false,
-      test_otp: plainOtp,
     });
   } catch (err: any) {
     console.error('[StartDelivery] Exception:', err);

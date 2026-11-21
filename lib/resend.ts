@@ -2,6 +2,14 @@ import { Resend } from 'resend';
 
 export const getResendApiKey = () => process.env.RESEND_API_KEY || '';
 
+export const getResendFromEmail = () => {
+  const envFrom = process.env.RESEND_FROM_EMAIL?.trim();
+  if (!envFrom || envFrom.includes('resend.dev') || envFrom.includes('onboarding@')) {
+    return 'Easy Farm <business@easyfarm.co.in>';
+  }
+  return envFrom;
+};
+
 export const isResendConfigured = () => {
   const apiKey = getResendApiKey();
   return Boolean(apiKey && apiKey !== 're_123456789' && apiKey.startsWith('re_'));
