@@ -348,6 +348,7 @@ export async function PATCH(req: NextRequest) {
     };
 
     let parsedMeta: any = {};
+    let dispatchedPlainOtp = '';
     if (currentOrd) {
       let meta: any = {};
       if (currentOrd.notes) {
@@ -383,7 +384,8 @@ export async function PATCH(req: NextRequest) {
         updateData.delivery_person_type = 'FOUNDER';
         updateData.delivery_person_name = auth.profile?.full_name || 'Founder / Admin';
 
-        meta.deliveryOtp = plainOtp;
+        dispatchedPlainOtp = plainOtp;
+        delete meta.deliveryOtp;
       } else if (status === 'delivered') {
         meta.timeline.delivered_at = nowIso;
         updateData.delivered_at = nowIso;
@@ -463,8 +465,9 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    // 1.8 If order was set to out_for_delivery, dispatch 4-digit Handover OTP to customer registered email
-    if (status === 'out_for_delivery' && parsedMeta?.deliveryOtp) {
+    // 1.8 If order was set to out_for_delivery, dispatch 4-digit Handover OTP strictly to customer registered email
+    const otpToDispatch = dispatchedPlainOtp || parsedMeta?.deliveryOtp;
+    if (status === 'out_for_delivery' && otpToDispatch) {
       try {
         let orderQuery = supabase
           .from('orders')
@@ -491,7 +494,7 @@ export async function PATCH(req: NextRequest) {
             toEmail: customer.customerEmail,
             recipientName: customer.customerName,
             orderId: customer.orderNumber,
-            otp: parsedMeta.deliveryOtp,
+            otp: otpToDispatch,
             deliveryAddress: customer.fullAddress,
           });
 
@@ -523,14 +526,15 @@ export async function PATCH(req: NextRequest) {
         console.error('[Admin Orders PATCH] Error processing weekly streak on delivery:', streakErr);
       }
 
-      // Dispatch confirmation email to customer
+      // Dispatch confirmation email strictly to customer registered email
       try {
         let orderQuery = supabase
           .from('orders')
           .select(`
             id,
+            customer_id,
             notes,
-            profiles(full_name, email),
+            profiles(id, full_name, phone, email),
             customer_addresses(full_address, apartment, locality)
           `);
 
@@ -549,23 +553,18 @@ export async function PATCH(req: NextRequest) {
             } catch {}
           }
 
-          const customerEmail = meta?.customerEmail || (matchedOrder.profiles as any)?.email || '';
-          const customerName = meta?.customerName || (matchedOrder.profiles as any)?.full_name || 'Valued Resident';
-          const displayOrderId = meta?.orderNumber || `EF${matchedOrder.id.slice(0, 4).toUpperCase()}`;
-          const deliveryAddress =
-            meta?.fullAddress ||
-            (matchedOrder.customer_addresses as any)?.full_address ||
-            [(matchedOrder.customer_addresses as any)?.apartment, (matchedOrder.customer_addresses as any)?.locality]
-              .filter(Boolean)
-              .join(', ') ||
-            'Ghatkesar & Pocharam, Hyderabad (Active)';
+          const customer = await resolveOrderCustomer(supabase, matchedOrder, meta);
 
-          if (customerEmail) {
+          if (customer.customerEmail) {
             await EmailService.sendOrderDeliveredEmail({
-              toEmail: customerEmail,
-              recipientName: customerName,
-              orderId: displayOrderId,
-              deliveryAddress,
+              toEmail: customer.customerEmail,
+              recipientName: customer.customerName,
+              orderId: customer.orderNumber,
+              deliveryAddress: customer.fullAddress,
+              deliveredAt: new Date(nowIso).toLocaleString('en-IN', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              }),
             });
           }
         }

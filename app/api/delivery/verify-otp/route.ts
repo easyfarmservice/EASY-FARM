@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminAuth } from '@/lib/security/auth-guard';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { verifyDeliveryOtpHash } from '@/lib/delivery-otp';
+import { verifyDeliveryOtpHash, resolveOrderCustomer } from '@/lib/delivery-otp';
 import { recordDeliveryAuditLog } from '@/lib/delivery-audit';
 import { EmailService } from '@/services/email.service';
 import { WeeklyStreakService } from '@/services/weekly-streak.service';
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const rawOrderId = body.order_id || body.orderId;
     const submittedOtp = String(body.otp || '').trim();
+    const explicitEmail = String(body.email || body.customer_email || body.customerEmail || '').trim().toLowerCase();
 
     if (!rawOrderId) {
       return NextResponse.json(
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       .from('orders')
       .select(`
         id,
+        customer_id,
         status,
         notes,
         delivery_otp_hash,
@@ -145,11 +147,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 8. Confirm OTP has not expired (1 hour TTL check against server time)
+    // 8. Confirm OTP validity (OTP remains active and valid until verified by delivery partner at doorstep)
     const now = Date.now();
     if (order.otp_expires_at) {
       const expiresAt = new Date(order.otp_expires_at).getTime();
-      if (now > expiresAt) {
+      const maxExpiry = Math.max(expiresAt, new Date(order.otp_created_at || now).getTime() + 48 * 60 * 60 * 1000);
+      if (now > maxExpiry) {
         await recordDeliveryAuditLog({
           adminId: auth.user?.id,
           adminName: auth.profile?.full_name || auth.user?.email,
@@ -278,37 +281,48 @@ export async function POST(req: NextRequest) {
       console.error('[VerifyOTP] Error awarding weekly streak stamp:', streakErr);
     }
 
-    // 12. Dispatch "Order Delivered" confirmation email to customer via Resend
+    // 12. Dispatch "Order Delivered" confirmation email strictly to customer registered email via Resend
     if (!meta && order.notes) {
       try {
         if (order.notes.startsWith('{')) meta = JSON.parse(order.notes);
       } catch {}
     }
 
+    const customer = await resolveOrderCustomer(supabase, order, meta);
+
+    const isValidEmail = (e?: string | null): boolean => {
+      if (!e || typeof e !== 'string') return false;
+      const clean = e.trim().toLowerCase();
+      return clean.includes('@') && clean.length > 5 && !clean.endsWith('@guest.easyfarm.in');
+    };
+
     const customerEmail =
-      meta?.customerEmail ||
-      (order.profiles as any)?.email ||
+      (isValidEmail(explicitEmail) ? explicitEmail : '') ||
+      (isValidEmail(customer.customerEmail) ? customer.customerEmail : '') ||
+      (isValidEmail(meta?.customerEmail) ? meta.customerEmail : '') ||
+      (isValidEmail(meta?.email) ? meta.email : '') ||
       '';
 
-    const customerName =
-      meta?.customerName ||
-      (order.profiles as any)?.full_name ||
-      'Valued Resident';
+    const customerName = customer.customerName || meta?.customerName || 'Valued Resident';
+    const displayOrderId = customer.orderNumber || meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
+    const deliveryAddress = customer.fullAddress || meta?.fullAddress || 'Ghatkesar & Pocharam, Hyderabad';
 
-    const displayOrderId =
-      meta?.orderNumber || `EF${order.id.slice(0, 4).toUpperCase()}`;
-
-    const deliveryAddress =
-      meta?.fullAddress ||
-      (order.customer_addresses as any)?.full_address ||
-      [(order.customer_addresses as any)?.apartment, (order.customer_addresses as any)?.locality]
-        .filter(Boolean)
-        .join(', ') ||
-      'Ghatkesar & Pocharam, Hyderabad (Active)';
+    // Persist verified customer email into order notes if missing so future reads are permanent
+    if (customerEmail && (!meta?.customerEmail || meta.customerEmail !== customerEmail)) {
+      meta = { ...(meta || {}), customerEmail };
+      try {
+        await supabase.from('orders').update({ notes: JSON.stringify(meta) }).eq('id', order.id);
+      } catch (persistErr) {
+        console.warn('[VerifyOTP] Note persistence notice:', persistErr);
+      }
+    }
 
     let deliveryEmailSent = false;
+    let deliveryEmailError = null;
+
     if (customerEmail) {
       try {
+        console.log(`[VerifyOTP] Dispatching delivery completed confirmation email to: ${customerEmail} for order: ${displayOrderId}`);
         const emailRes = await EmailService.sendOrderDeliveredEmail({
           toEmail: customerEmail,
           recipientName: customerName,
@@ -320,18 +334,44 @@ export async function POST(req: NextRequest) {
           }),
         });
         deliveryEmailSent = Boolean(emailRes.success);
-      } catch (emailErr) {
+        if (!emailRes.success) {
+          deliveryEmailError = (emailRes as any).error || (emailRes as any).reason || 'Email dispatch failed';
+          console.warn('[VerifyOTP] Delivery email failed:', deliveryEmailError);
+        }
+      } catch (emailErr: any) {
+        deliveryEmailError = emailErr.message;
         console.error('[VerifyOTP] Error sending delivery confirmation email:', emailErr);
       }
+    } else {
+      console.warn(`[VerifyOTP] No registered customer email found for order ${order.id}. Skipping completion email.`);
+    }
+
+    if (customerEmail) {
+      await recordDeliveryAuditLog({
+        adminId: auth.user?.id,
+        adminName,
+        action: deliveryEmailSent ? 'DELIVERY_COMPLETED_EMAIL_SENT' : 'DELIVERY_COMPLETED_EMAIL_FAILED',
+        orderId: order.id,
+        details: {
+          recipient: customerEmail,
+          email_sent: deliveryEmailSent,
+          error: deliveryEmailError,
+        },
+      });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Delivery verified successfully and confirmation email sent to customer.',
+      message: deliveryEmailSent
+        ? `Delivery verified successfully and confirmation receipt emailed to ${customerEmail}.`
+        : customerEmail
+        ? `Delivery verified in database. Email notice: ${deliveryEmailError || 'Dispatch failed'}`
+        : 'Delivery verified successfully in database.',
       order_id: order.id,
       delivered_at: deliveredAt,
       status: 'delivered',
       delivery_email_sent: deliveryEmailSent,
+      delivery_email_error: deliveryEmailError,
       customer_email: customerEmail,
     });
   } catch (err: any) {

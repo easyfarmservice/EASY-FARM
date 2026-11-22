@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     // Store in global memory store for instant server-side verification fallback
     setOtp(cleanEmail, otpCode, supabaseOtp);
 
-    // 3. Send 6-digit OTP email via Resend
+    // 3. Send 6-digit OTP email strictly to customer's registered email via Resend
     const emailResult = await EmailService.sendOtpEmail({
       toEmail: cleanEmail,
       name: displayName,
@@ -146,20 +146,48 @@ export async function POST(request: Request) {
 
     if (!emailResult.success) {
       const errorMsg: string = (emailResult as any).error || (emailResult as any).reason || 'Email dispatch failed';
-      console.warn('[send-otp] Resend dispatch warning:', errorMsg);
+      console.warn('[send-otp] Resend dispatch warning, attempting Supabase Auth email fallback:', errorMsg);
 
-      return NextResponse.json({
-        success: true,
-        message: `Verification code generated: ${otpCode}`,
-        devCode: otpCode,
-        resendRestricted: true,
-      });
+      // Fallback: Attempt Supabase Auth email dispatch
+      try {
+        const { error: sbError } = await supabaseAdmin.auth.signInWithOtp({
+          email: cleanEmail,
+          options: {
+            shouldCreateUser: type === 'signup',
+            data: {
+              full_name: displayName,
+              phone: phone?.trim() || '',
+              role: 'customer',
+            },
+          },
+        });
+
+        if (sbError) {
+          console.error('[send-otp] Both Resend and Supabase email dispatch failed:', sbError.message);
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Failed to send verification code to your email. Please check your email address and try again.',
+            },
+            { status: 500 }
+          );
+        }
+      } catch (fallbackErr: any) {
+        console.error('[send-otp] Fallback exception:', fallbackErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to send verification code to your email. Please check your email address and try again.',
+          },
+          { status: 500 }
+        );
+      }
     }
 
+    // STRICT PRIVACY: NEVER RETURN THE OTP IN JSON RESPONSE OR WEBPAGE
     return NextResponse.json({
       success: true,
       message: `6-digit verification code sent to ${cleanEmail}`,
-      devCode: process.env.NODE_ENV !== 'production' ? otpCode : undefined,
     });
   } catch (err: any) {
     console.error('[send-otp] Unexpected exception:', err);

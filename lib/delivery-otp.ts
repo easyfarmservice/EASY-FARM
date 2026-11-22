@@ -43,11 +43,12 @@ export function verifyDeliveryOtpHash(submittedOtp: string, storedHash: string):
 }
 
 /**
- * Calculates the expiration timestamp (1 hour from current server time).
+ * Calculates the expiration timestamp for the delivery window.
+ * The OTP remains active and valid until the delivery partner validates it at the customer's doorstep (24 hours).
  */
 export function getDeliveryOtpExpiry(): string {
-  const ONE_HOUR_MS = 60 * 60 * 1000;
-  return new Date(Date.now() + ONE_HOUR_MS).toISOString();
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  return new Date(Date.now() + TWENTY_FOUR_HOURS_MS).toISOString();
 }
 
 /**
@@ -108,8 +109,14 @@ export async function resolveOrderCustomer(
   let customerPhone = '';
   let customerName = '';
 
+  const isValidEmail = (e?: string | null): boolean => {
+    if (!e || typeof e !== 'string') return false;
+    const clean = e.trim().toLowerCase();
+    return clean.includes('@') && clean.length > 5 && !clean.endsWith('@guest.easyfarm.in');
+  };
+
   // Registered profile email is the primary source of truth
-  if (profile?.email && !profile.email.endsWith('@guest.easyfarm.in')) {
+  if (isValidEmail(profile?.email)) {
     customerEmail = profile.email.trim().toLowerCase();
   }
   if (profile?.phone) {
@@ -121,16 +128,16 @@ export async function resolveOrderCustomer(
 
   const customerId = order?.customer_id || profile?.id;
 
-  // 2. Query profiles table directly if email or phone is missing from join
+  // 2. Query profiles table directly (by id OR auth_user_id) if email or phone is missing from join
   if ((!customerEmail || !customerPhone || !customerName) && customerId) {
     try {
       const { data: prof } = await supabase
         .from('profiles')
         .select('id, email, full_name, phone')
-        .eq('id', customerId)
+        .or(`id.eq.${customerId},auth_user_id.eq.${customerId}`)
         .maybeSingle();
 
-      if (prof?.email && !prof.email.endsWith('@guest.easyfarm.in') && !customerEmail) {
+      if (isValidEmail(prof?.email) && !customerEmail) {
         customerEmail = prof.email.trim().toLowerCase();
       }
       if (!customerPhone && prof?.phone) {
@@ -146,7 +153,7 @@ export async function resolveOrderCustomer(
   if (!customerEmail && customerId && supabase.auth?.admin) {
     try {
       const { data: authData } = await supabase.auth.admin.getUserById(customerId);
-      if (authData?.user?.email) {
+      if (isValidEmail(authData?.user?.email)) {
         customerEmail = authData.user.email.trim().toLowerCase();
       }
       if (!customerName && authData?.user?.user_metadata?.full_name) {
@@ -160,16 +167,36 @@ export async function resolveOrderCustomer(
 
   // 4. Fallback to metadata / notes only if database has no registered contact
   if (!customerEmail) {
-    customerEmail = (meta?.customerEmail || metaAddr?.customerEmail || '').trim().toLowerCase();
-  }
-  if (!customerPhone) {
-    customerPhone = (meta?.customerPhone || metaAddr?.customerPhone || '').trim();
-  }
-  if (!customerName) {
-    customerName = (meta?.customerName || metaAddr?.customerName || profile?.full_name || 'Resident').trim();
+    const rawMetaEmail =
+      meta?.customerEmail ||
+      meta?.email ||
+      meta?.userEmail ||
+      metaAddr?.customerEmail ||
+      metaAddr?.email ||
+      meta?.address?.customerEmail ||
+      meta?.address?.email ||
+      '';
+    if (isValidEmail(rawMetaEmail)) {
+      customerEmail = String(rawMetaEmail).trim().toLowerCase();
+    }
   }
 
-  // 4. Resolve delivery address (handles top-level, nested meta.address, customer_addresses relation)
+  if (!customerPhone) {
+    customerPhone = (meta?.customerPhone || meta?.phone || metaAddr?.customerPhone || metaAddr?.phone || '').trim();
+  }
+  if (!customerName) {
+    customerName = (
+      meta?.customerName ||
+      meta?.fullName ||
+      meta?.name ||
+      metaAddr?.customerName ||
+      metaAddr?.fullName ||
+      profile?.full_name ||
+      'Resident'
+    ).trim();
+  }
+
+  // 5. Resolve delivery address (handles top-level, nested meta.address, customer_addresses relation)
   const addrObj = Array.isArray(order?.customer_addresses)
     ? order.customer_addresses[0]
     : order?.customer_addresses;

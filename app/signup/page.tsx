@@ -62,7 +62,7 @@ function SignupFormContent() {
       if (apiRes.ok && apiData.success) {
         return {
           ok: true,
-          notice: apiData.message || `6-digit verification code sent to ${cleanEmail}`,
+          notice: `6-digit verification code sent to ${cleanEmail}`,
         };
       }
       if (apiRes.status === 429) {

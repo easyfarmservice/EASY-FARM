@@ -166,13 +166,12 @@ export async function POST(req: NextRequest) {
     const newExpiresAt = getDeliveryOtpExpiry();
 
     // 8. Overwrite hash in database, reset attempts to 0, save resolved customer details
-    meta = {
-      ...(meta || {}),
-      deliveryOtp: newOtp,
-      customerEmail: customerEmail || meta?.customerEmail,
-      customerName: customerName || meta?.customerName,
-      customerPhone: customerPhone || meta?.customerPhone,
-    };
+    const cleanMeta = { ...(meta || {}) };
+    delete cleanMeta.deliveryOtp;
+    if (customerEmail) cleanMeta.customerEmail = customerEmail;
+    if (customerName) cleanMeta.customerName = customerName;
+    if (customerPhone) cleanMeta.customerPhone = customerPhone;
+
     const newStatus = order.status === 'out_for_delivery' ? order.status : 'out_for_delivery';
     const { error: updateErr } = await supabase
       .from('orders')
@@ -184,7 +183,7 @@ export async function POST(req: NextRequest) {
         otp_expires_at: newExpiresAt,
         otp_verified: false,
         otp_attempts: 0,
-        notes: JSON.stringify(meta),
+        notes: JSON.stringify(cleanMeta),
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
@@ -260,7 +259,7 @@ export async function POST(req: NextRequest) {
       customer_email: customerEmail,
       email_sent: Boolean(emailResult.success),
       email_error: emailResult.success ? null : (emailResult.error || 'Email dispatch failed'),
-      delivery_otp: newOtp,
+      delivery_otp: null,
       expires_at: newExpiresAt,
       sms_simulated: smsResult.simulated || false,
     });
