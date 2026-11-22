@@ -56,7 +56,9 @@ export function DeliveryMapPicker({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const infoWindowRef = useRef<any>(null);
   const userGpsMarkerRef = useRef<any>(null);
+  const isGoogleMapsRef = useRef<boolean>(false);
   const showUserCurrentLocationRef = useRef<((lat: number, lng: number) => void) | null>(null);
   const searchTimeoutRef = useRef<any>(null);
 
@@ -110,7 +112,11 @@ export function DeliveryMapPicker({
 
   const handleFitToZone = useCallback(() => {
     if (mapInstanceRef.current && zoneBoundsRef.current) {
-      mapInstanceRef.current.fitBounds(zoneBoundsRef.current, { padding: [35, 35], maxZoom: 14 });
+      if (isGoogleMapsRef.current) {
+        mapInstanceRef.current.fitBounds(zoneBoundsRef.current, 35);
+      } else {
+        mapInstanceRef.current.fitBounds(zoneBoundsRef.current, { padding: [35, 35], maxZoom: 14 });
+      }
     }
   }, []);
 
@@ -228,15 +234,25 @@ export function DeliveryMapPicker({
 
           if (markerRef.current) {
             try {
-              markerRef.current
-                .bindPopup(
+              if (isGoogleMapsRef.current && infoWindowRef.current) {
+                infoWindowRef.current.setContent(
                   `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
                     <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${placeName}</strong>
                     <span style="color: #475569; font-size: 11px;">${mandal} • PIN <strong>${pincode}</strong></span>
-                  </div>`,
-                  { closeButton: false, offset: [0, -32] }
-                )
-                .openPopup();
+                  </div>`
+                );
+                infoWindowRef.current.open(mapInstanceRef.current, markerRef.current);
+              } else if (markerRef.current.bindPopup) {
+                markerRef.current
+                  .bindPopup(
+                    `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
+                      <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${placeName}</strong>
+                      <span style="color: #475569; font-size: 11px;">${mandal} • PIN <strong>${pincode}</strong></span>
+                    </div>`,
+                    { closeButton: false, offset: [0, -32] }
+                  )
+                  .openPopup();
+              }
             } catch {}
           }
 
@@ -276,15 +292,25 @@ export function DeliveryMapPicker({
         // Update popup on map marker
         if (markerRef.current) {
           try {
-            markerRef.current
-              .bindPopup(
+            if (isGoogleMapsRef.current && infoWindowRef.current) {
+              infoWindowRef.current.setContent(
                 `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
                   <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${placeName}</strong>
                   <span style="color: #475569; font-size: 11px;">${mandal} • PIN <strong>${pincode}</strong></span>
-                </div>`,
-                { closeButton: false, offset: [0, -32] }
-              )
-              .openPopup();
+                </div>`
+              );
+              infoWindowRef.current.open(mapInstanceRef.current, markerRef.current);
+            } else if (markerRef.current.bindPopup) {
+              markerRef.current
+                .bindPopup(
+                  `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
+                    <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${placeName}</strong>
+                    <span style="color: #475569; font-size: 11px;">${mandal} • PIN <strong>${pincode}</strong></span>
+                  </div>`,
+                  { closeButton: false, offset: [0, -32] }
+                )
+                .openPopup();
+            }
           } catch {}
         }
 
@@ -314,10 +340,18 @@ export function DeliveryMapPicker({
       setGpsError(null);
 
       if (markerRef.current) {
-        markerRef.current.setLatLng([newLat, newLng]);
+        if (isGoogleMapsRef.current) {
+          markerRef.current.setPosition({ lat: newLat, lng: newLng });
+        } else if (markerRef.current.setLatLng) {
+          markerRef.current.setLatLng([newLat, newLng]);
+        }
       }
       if (updateMapCenter && mapInstanceRef.current) {
-        mapInstanceRef.current.setView([newLat, newLng], 15, { animate: true });
+        if (isGoogleMapsRef.current) {
+          mapInstanceRef.current.panTo({ lat: newLat, lng: newLng });
+        } else if (mapInstanceRef.current.setView) {
+          mapInstanceRef.current.setView([newLat, newLng], 15, { animate: true });
+        }
       }
 
       let geoInfo: GeocodedAddressInfo | undefined;
@@ -369,13 +403,236 @@ export function DeliveryMapPicker({
     [reverseGeocode, verifyServiceabilityBackend]
   );
 
-  // Initialize Map
+  // Initialize Map: Official Google Maps JavaScript API (Primary) with graceful fallback
   useEffect(() => {
     let isMounted = true;
 
     async function init() {
       if (typeof window === 'undefined' || !mapContainerRef.current) return;
 
+      const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      let gMaps: any = null;
+
+      if (googleApiKey) {
+        try {
+          if ((window as any).google?.maps) {
+            gMaps = (window as any).google;
+          } else {
+            await new Promise<void>((resolve, reject) => {
+              if (document.getElementById('google-maps-js-sdk')) {
+                const interval = setInterval(() => {
+                  if ((window as any).google?.maps) {
+                    clearInterval(interval);
+                    resolve();
+                  }
+                }, 100);
+                setTimeout(() => {
+                  clearInterval(interval);
+                  resolve();
+                }, 5000);
+                return;
+              }
+
+              const script = document.createElement('script');
+              script.id = 'google-maps-js-sdk';
+              script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
+              script.async = true;
+              script.onload = () => resolve();
+              script.onerror = (e) => reject(e);
+              document.head.appendChild(script);
+            });
+
+            if ((window as any).google?.maps) {
+              gMaps = (window as any).google;
+            }
+          }
+        } catch (err) {
+          console.warn('Google Maps script load caught, attempting fallback:', err);
+        }
+      }
+
+      // ── PRIMARY: OFFICIAL GOOGLE MAPS JAVASCRIPT API ─────────────────────
+      if (gMaps?.maps) {
+        isGoogleMapsRef.current = true;
+
+        const map = new gMaps.maps.Map(mapContainerRef.current, {
+          center: { lat: coords.lat, lng: coords.lng },
+          zoom: 15,
+          mapTypeControl: true,
+          mapTypeControlOptions: {
+            position: gMaps.maps.ControlPosition.TOP_LEFT,
+            style: gMaps.maps.MapTypeControlStyle.DROPDOWN_MENU,
+          },
+          fullscreenControl: true,
+          fullscreenControlOptions: {
+            position: gMaps.maps.ControlPosition.RIGHT_TOP,
+          },
+          zoomControl: true,
+          zoomControlOptions: {
+            position: gMaps.maps.ControlPosition.RIGHT_CENTER,
+          },
+          streetViewControl: false,
+          gestureHandling: 'greedy',
+        });
+
+        mapInstanceRef.current = map;
+
+        // Custom High-Resolution Delivery Pin Marker
+        const pinSvg = `<svg width="42" height="52" viewBox="0 0 42 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M21 0C9.402 0 0 9.402 0 21C0 35.8 18.5 50.8 20.2 51.7C20.7 52 21.3 52 21.8 51.7C23.5 50.8 42 35.8 42 21C42 9.402 32.598 0 21 0Z" fill="#047857"/>
+          <path d="M21 1.5C10.23 1.5 1.5 10.23 1.5 21C1.5 34.6 19 49 21 50.4C23 49 40.5 34.6 40.5 21C40.5 10.23 31.77 1.5 21 1.5Z" stroke="#ffffff" stroke-width="2.5"/>
+          <circle cx="21" cy="19" r="8" fill="#ffffff"/>
+          <circle cx="21" cy="19" r="4.5" fill="#047857"/>
+        </svg>`;
+
+        const marker = new gMaps.maps.Marker({
+          position: { lat: coords.lat, lng: coords.lng },
+          map: map,
+          draggable: true,
+          title: '📍 Deliver Here - Drag to adjust doorstep',
+          icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pinSvg),
+            scaledSize: new gMaps.maps.Size(42, 52),
+            anchor: new gMaps.maps.Point(21, 52),
+          },
+          animation: gMaps.maps.Animation.DROP,
+          zIndex: 9999,
+        });
+
+        markerRef.current = marker;
+
+        const infoWindow = new gMaps.maps.InfoWindow({
+          content: `<div style="font-family: inherit; font-size: 11px; padding: 2px 4px; line-height: 1.4;">
+            <strong style="color: #064e3b; font-size: 12px; display: block;">📍 ${detectedPlaceName || 'Deliver Here'}</strong>
+            <span style="color: #475569; font-size: 11px;">Drag marker to adjust exact doorstep</span>
+          </div>`,
+          disableAutoPan: true,
+        });
+        infoWindow.open(map, marker);
+        infoWindowRef.current = infoWindow;
+
+        marker.addListener('dragend', () => {
+          const pos = marker.getPosition();
+          if (pos) {
+            updatePosition(pos.lat(), pos.lng(), false);
+          }
+        });
+
+        map.addListener('click', (e: any) => {
+          if (e.latLng) {
+            const lat = e.latLng.lat();
+            const lng = e.latLng.lng();
+            marker.setPosition({ lat, lng });
+            updatePosition(lat, lng, false);
+          }
+        });
+
+        // Fetch active delivery zones and draw genuine Google Maps Polygons
+        try {
+          const zonesRes = await fetch('/api/delivery/zones');
+          const zonesData = await zonesRes.json();
+          if (zonesData.success && Array.isArray(zonesData.zones) && isMounted) {
+            const bounds = new gMaps.maps.LatLngBounds();
+            let hasBounds = false;
+
+            zonesData.zones.forEach((zone: any) => {
+              if (zone.polygon?.coordinates?.[0]) {
+                const path = zone.polygon.coordinates[0].map(
+                  ([lng, lat]: [number, number]) => ({ lat, lng })
+                );
+                path.forEach((pt: any) => bounds.extend(pt));
+                hasBounds = true;
+
+                const poly = new gMaps.maps.Polygon({
+                  paths: path,
+                  strokeColor: '#059669',
+                  strokeOpacity: 0.9,
+                  strokeWeight: 2,
+                  fillColor: '#10b981',
+                  fillOpacity: 0.16,
+                  map: map,
+                  clickable: false,
+                });
+
+                zoneLayersRef.current.push(poly);
+              }
+            });
+
+            if (hasBounds) {
+              zoneBoundsRef.current = bounds;
+              setHasZoneBounds(true);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load active delivery zones on Google map:', err);
+        }
+
+        // Helper to display user's Current Location (pulsing blue beacon on Google Maps)
+        const showUserCurrentLocation = (lat: number, lng: number) => {
+          if (!mapInstanceRef.current || !isMounted) return;
+          if (userGpsMarkerRef.current) {
+            userGpsMarkerRef.current.setPosition({ lat, lng });
+          } else {
+            const gpsMarker = new gMaps.maps.Marker({
+              position: { lat, lng },
+              map: mapInstanceRef.current,
+              title: '📍 You are here (Current Location)',
+              icon: {
+                path: gMaps.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: '#2563eb',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2.5,
+              },
+              zIndex: 500,
+            });
+            userGpsMarkerRef.current = gpsMarker;
+          }
+        };
+
+        showUserCurrentLocationRef.current = showUserCurrentLocation;
+
+        // Auto-fetch device GPS on map load
+        if (typeof window !== 'undefined' && navigator.geolocation) {
+          setDetectingGps(true);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (!isMounted) return;
+              setDetectingGps(false);
+              const { latitude, longitude } = pos.coords;
+              showUserCurrentLocation(latitude, longitude);
+              updatePosition(latitude, longitude, true);
+            },
+            (err) => {
+              if (!isMounted) return;
+              setDetectingGps(false);
+              console.log('Google Map GPS auto-fetch note:', err.message);
+              verifyServiceabilityBackend(coords.lat, coords.lng, {
+                shortName: resolvedAddress,
+                placeName: detectedPlaceName,
+                mandal: detectedMandal,
+                pincode: detectedPincode,
+                fullAddress: resolvedAddress,
+              });
+            },
+            { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
+          );
+        } else {
+          verifyServiceabilityBackend(coords.lat, coords.lng, {
+            shortName: resolvedAddress,
+            placeName: detectedPlaceName,
+            mandal: detectedMandal,
+            pincode: detectedPincode,
+            fullAddress: resolvedAddress,
+          });
+        }
+
+        return;
+      }
+
+      // ── SECONDARY: LEAFLET FALLBACK (IF GOOGLE API UNAVAILABLE) ────────
+      isGoogleMapsRef.current = false;
       const L = (await import('leaflet')).default;
 
       if (!document.getElementById('leaflet-css')) {
@@ -407,121 +664,27 @@ export function DeliveryMapPicker({
 
       mapInstanceRef.current = map;
 
-      // Google Maps JavaScript API Layer (when API key is present) with fallback to Esri World Street Map
-      const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      if (googleApiKey) {
-        L.tileLayer(`https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${googleApiKey}`, {
-          maxZoom: 20,
-          subdomains: ['0', '1', '2', '3'],
-          attribution: 'Map data © Google',
-        }).addTo(map);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '',
+      }).addTo(map);
 
-        // Dynamically load Google Maps JavaScript API library for Geocoding & Places
-        if (!document.getElementById('google-maps-js-sdk')) {
-          const script = document.createElement('script');
-          script.id = 'google-maps-js-sdk';
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
-          script.async = true;
-          document.head.appendChild(script);
-        }
-      } else {
-        // Ultra-smooth, high-resolution Esri World Street Map fallback
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-          maxZoom: 19,
-          attribution: '',
-        }).addTo(map);
-      }
-
-      // Force size recalculation to prevent blank map rectangles
-      setTimeout(() => {
-        try {
-          map.invalidateSize();
-        } catch {}
-      }, 250);
-
-      // Inject map marker animations if not present
-      if (!document.getElementById('easyfarm-map-pin-styles')) {
-        const style = document.createElement('style');
-        style.id = 'easyfarm-map-pin-styles';
-        style.innerHTML = `
-          @keyframes user-gps-radar {
-            0% { transform: scale(0.6); opacity: 0.9; }
-            70% { transform: scale(2.4); opacity: 0; }
-            100% { transform: scale(2.4); opacity: 0; }
-          }
-          .custom-delivery-pin-wrap {
-            transition: transform 0.15s ease-out;
-          }
-          .custom-delivery-pin:hover .custom-delivery-pin-wrap {
-            transform: translate(-50%, -106%) scale(1.04);
-          }
-        `;
-        document.head.appendChild(style);
-      }
-
-      // Helper to display user's Current Location (pulsing blue beacon)
-      const showUserCurrentLocation = (lat: number, lng: number) => {
-        if (!mapInstanceRef.current || !isMounted) return;
-
-        const gpsIcon = L.divIcon({
-          className: 'user-current-gps-marker',
-          html: `
-            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
-              <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: rgba(37, 99, 235, 0.35); animation: user-gps-radar 2s infinite ease-out;"></div>
-              <div style="position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
-              <div style="position: absolute; width: 10px; height: 10px; border-radius: 50%; background-color: #2563eb;"></div>
-            </div>
-          `,
-          iconSize: [0, 0],
-        });
-
-        if (userGpsMarkerRef.current) {
-          userGpsMarkerRef.current.setLatLng([lat, lng]);
-        } else {
-          const gpsMarker = L.marker([lat, lng], {
-            icon: gpsIcon,
-            zIndexOffset: 50,
-          }).addTo(mapInstanceRef.current);
-
-          gpsMarker.bindTooltip(
-            `<div style="font-family: inherit; font-size: 11px; font-weight: 700; color: #1e3a8a; padding: 2px 6px;">📍 You are here (Current Location)</div>`,
-            { direction: 'top', offset: [0, -14] }
-          );
-
-          userGpsMarkerRef.current = gpsMarker;
-        }
-      };
-
-      showUserCurrentLocationRef.current = showUserCurrentLocation;
-
-      // High-Definition Proper Delivery Location Pin Marker
+      // Custom Leaflet Pin
       const customIcon = L.divIcon({
         className: 'custom-delivery-pin',
         html: `
           <div class="custom-delivery-pin-wrap" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -100%); cursor: grab; user-select: none;">
-            <!-- Floating "Deliver Here" Pill -->
-            <div style="background: #064e3b; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 20px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.32); border: 1.5px solid #ffffff; letter-spacing: 0.2px; margin-bottom: 2px; display: flex; align-items: center; gap: 4px; pointer-events: none;">
+            <div style="background: #064e3b; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 20px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.32); border: 1.5px solid #ffffff; letter-spacing: 0.2px; margin-bottom: 2px;">
               <span>📍 Deliver Here</span>
             </div>
-
-            <!-- Proper Teardrop Location Pin -->
             <div style="position: relative; width: 42px; height: 52px; display: flex; align-items: center; justify-content: center;">
-              <svg width="42" height="52" viewBox="0 0 42 52" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.32));">
-                <path d="M21 0C9.402 0 0 9.402 0 21C0 35.8 18.5 50.8 20.2 51.7C20.7 52 21.3 52 21.8 51.7C23.5 50.8 42 35.8 42 21C42 9.402 32.598 0 21 0Z" fill="url(#deliveryPinGradient)"/>
+              <svg width="42" height="52" viewBox="0 0 42 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 0C9.402 0 0 9.402 0 21C0 35.8 18.5 50.8 20.2 51.7C20.7 52 21.3 52 21.8 51.7C23.5 50.8 42 35.8 42 21C42 9.402 32.598 0 21 0Z" fill="#047857"/>
                 <path d="M21 1.5C10.23 1.5 1.5 10.23 1.5 21C1.5 34.6 19 49 21 50.4C23 49 40.5 34.6 40.5 21C40.5 10.23 31.77 1.5 21 1.5Z" stroke="#ffffff" stroke-width="2.5"/>
-                <circle cx="21" cy="19" r="9" fill="#ffffff"/>
-                <circle cx="21" cy="19" r="5" fill="#047857"/>
-                <defs>
-                  <linearGradient id="deliveryPinGradient" x1="21" y1="0" x2="21" y2="52" gradientUnits="userSpaceOnUse">
-                    <stop stop-color="#059669"/>
-                    <stop offset="1" stop-color="#064e3b"/>
-                  </linearGradient>
-                </defs>
+                <circle cx="21" cy="19" r="8" fill="#ffffff"/>
+                <circle cx="21" cy="19" r="4.5" fill="#047857"/>
               </svg>
             </div>
-
-            <!-- Ground Shadow -->
-            <div style="position: absolute; bottom: -5px; width: 22px; height: 6px; background: rgba(0,0,0,0.35); border-radius: 50%; filter: blur(1.5px);"></div>
           </div>
         `,
         iconSize: [0, 0],
@@ -544,13 +707,12 @@ export function DeliveryMapPicker({
         updatePosition(e.latlng.lat, e.latlng.lng, false);
       });
 
-      // Fetch active delivery zones and visually highlight serviceable regions
+      // Leaflet Zones
       try {
         const zonesRes = await fetch('/api/delivery/zones');
         const zonesData = await zonesRes.json();
         if (zonesData.success && Array.isArray(zonesData.zones) && isMounted) {
           const allLatLngs: [number, number][] = [];
-
           zonesData.zones.forEach((zone: any) => {
             if (zone.polygon?.coordinates?.[0]) {
               const latLngs: [number, number][] = zone.polygon.coordinates[0].map(
@@ -559,36 +721,48 @@ export function DeliveryMapPicker({
               allLatLngs.push(...latLngs);
 
               const poly = L.polygon(latLngs, {
-                color: '#059669', // Emerald 600 border
-                fillColor: '#10b981', // Emerald 500 fill
+                color: '#059669',
+                fillColor: '#10b981',
                 fillOpacity: 0.18,
                 weight: 2.5,
                 dashArray: '6, 6',
               }).addTo(map);
-
-              poly.bindTooltip(
-                `<div style="font-family: inherit; font-size: 11px; font-weight: 700; color: #064e3b; padding: 2px 4px;">
-                  <div>🟢 ${zone.name}</div>
-                  <div style="font-weight: 500; font-size: 10px; color: #047857;">${zone.delivery_promise || 'Weekly Sunday Delivery Area'}</div>
-                </div>`,
-                { permanent: false, direction: 'top', sticky: true }
-              );
 
               zoneLayersRef.current.push(poly);
             }
           });
 
           if (allLatLngs.length > 0) {
-            const bounds = L.latLngBounds(allLatLngs as any);
-            zoneBoundsRef.current = bounds;
+            zoneBoundsRef.current = L.latLngBounds(allLatLngs as any);
             setHasZoneBounds(true);
           }
         }
       } catch (err) {
-        console.warn('Failed to load active delivery zones on map:', err);
+        console.warn('Leaflet zone fetch note:', err);
       }
 
-      // Automatically fetch device GPS location on map load and check if address is deliverable
+      const showUserCurrentLocation = (lat: number, lng: number) => {
+        if (!mapInstanceRef.current || !isMounted) return;
+        const gpsIcon = L.divIcon({
+          className: 'user-current-gps-marker',
+          html: `
+            <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
+              <div style="position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
+              <div style="position: absolute; width: 10px; height: 10px; border-radius: 50%; background-color: #2563eb;"></div>
+            </div>
+          `,
+          iconSize: [0, 0],
+        });
+
+        if (userGpsMarkerRef.current) {
+          userGpsMarkerRef.current.setLatLng([lat, lng]);
+        } else {
+          userGpsMarkerRef.current = L.marker([lat, lng], { icon: gpsIcon, zIndexOffset: 50 }).addTo(mapInstanceRef.current);
+        }
+      };
+
+      showUserCurrentLocationRef.current = showUserCurrentLocation;
+
       if (typeof window !== 'undefined' && navigator.geolocation) {
         setDetectingGps(true);
         navigator.geolocation.getCurrentPosition(
@@ -599,11 +773,9 @@ export function DeliveryMapPicker({
             showUserCurrentLocation(latitude, longitude);
             updatePosition(latitude, longitude, true);
           },
-          (err) => {
+          () => {
             if (!isMounted) return;
             setDetectingGps(false);
-            console.log('Map GPS auto-fetch not available or denied:', err.message);
-            // Fallback to verifying current pin coordinates if GPS is denied/unavailable
             verifyServiceabilityBackend(coords.lat, coords.lng, {
               shortName: resolvedAddress,
               placeName: detectedPlaceName,
@@ -614,33 +786,19 @@ export function DeliveryMapPicker({
           },
           { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
         );
-      } else {
-        // Fallback when browser does not support geolocation
-        verifyServiceabilityBackend(coords.lat, coords.lng, {
-          shortName: resolvedAddress,
-          placeName: detectedPlaceName,
-          mandal: detectedMandal,
-          pincode: detectedPincode,
-          fullAddress: resolvedAddress,
-        });
       }
-
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-        }
-      }, 250);
-
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-        }
-      }, 600);
     }
 
     const handleResize = () => {
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
+        if (isGoogleMapsRef.current) {
+          const g = (window as any).google;
+          if (g?.maps?.event) {
+            g.maps.event.trigger(mapInstanceRef.current, 'resize');
+          }
+        } else if (mapInstanceRef.current.invalidateSize) {
+          mapInstanceRef.current.invalidateSize();
+        }
       }
     };
     window.addEventListener('resize', handleResize);
@@ -658,29 +816,58 @@ export function DeliveryMapPicker({
       isMounted = false;
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('easyfarm-location-changed', handleGlobalLocationChange);
-      zoneLayersRef.current.forEach((layer) => {
-        try {
-          layer.remove();
-        } catch {}
-      });
-      zoneLayersRef.current = [];
-      if (userGpsMarkerRef.current) {
-        try {
-          userGpsMarkerRef.current.remove();
-        } catch {}
-        userGpsMarkerRef.current = null;
-      }
-      showUserCurrentLocationRef.current = null;
-      if (mapInstanceRef.current) {
-        try {
-          mapInstanceRef.current.remove();
-        } catch {}
+
+      if (isGoogleMapsRef.current) {
+        zoneLayersRef.current.forEach((layer) => {
+          try {
+            layer.setMap(null);
+          } catch {}
+        });
+        zoneLayersRef.current = [];
+        if (markerRef.current) {
+          try {
+            markerRef.current.setMap(null);
+          } catch {}
+          markerRef.current = null;
+        }
+        if (userGpsMarkerRef.current) {
+          try {
+            userGpsMarkerRef.current.setMap(null);
+          } catch {}
+          userGpsMarkerRef.current = null;
+        }
+        if (infoWindowRef.current) {
+          try {
+            infoWindowRef.current.close();
+          } catch {}
+          infoWindowRef.current = null;
+        }
         mapInstanceRef.current = null;
-      }
-      if (mapContainerRef.current) {
-        try {
-          delete (mapContainerRef.current as any)._leaflet_id;
-        } catch {}
+      } else {
+        zoneLayersRef.current.forEach((layer) => {
+          try {
+            layer.remove();
+          } catch {}
+        });
+        zoneLayersRef.current = [];
+        if (userGpsMarkerRef.current) {
+          try {
+            userGpsMarkerRef.current.remove();
+          } catch {}
+          userGpsMarkerRef.current = null;
+        }
+        showUserCurrentLocationRef.current = null;
+        if (mapInstanceRef.current) {
+          try {
+            mapInstanceRef.current.remove();
+          } catch {}
+          mapInstanceRef.current = null;
+        }
+        if (mapContainerRef.current) {
+          try {
+            delete (mapContainerRef.current as any)._leaflet_id;
+          } catch {}
+        }
       }
     };
   }, []);

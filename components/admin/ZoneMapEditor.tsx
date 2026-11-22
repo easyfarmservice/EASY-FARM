@@ -45,6 +45,7 @@ export function ZoneMapEditor({
   const draftLayerRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const LRef = useRef<any>(null);
+  const isGoogleMapsRef = useRef<boolean>(false);
 
   // Initialize Map
   useEffect(() => {
@@ -54,7 +55,75 @@ export function ZoneMapEditor({
       if (typeof window === 'undefined' || !mapContainerRef.current) return;
       if (mapInstanceRef.current) return;
 
-      const L = await import('leaflet');
+      const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      let gMaps: any = null;
+
+      if (googleApiKey) {
+        try {
+          if ((window as any).google?.maps) {
+            gMaps = (window as any).google;
+          } else {
+            await new Promise<void>((resolve, reject) => {
+              if (document.getElementById('google-maps-js-sdk')) {
+                const interval = setInterval(() => {
+                  if ((window as any).google?.maps) {
+                    clearInterval(interval);
+                    resolve();
+                  }
+                }, 100);
+                setTimeout(() => {
+                  clearInterval(interval);
+                  resolve();
+                }, 5000);
+                return;
+              }
+              const script = document.createElement('script');
+              script.id = 'google-maps-js-sdk';
+              script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places,geometry`;
+              script.async = true;
+              script.onload = () => resolve();
+              script.onerror = (e) => reject(e);
+              document.head.appendChild(script);
+            });
+            if ((window as any).google?.maps) {
+              gMaps = (window as any).google;
+            }
+          }
+        } catch (err) {
+          console.warn('Google Maps script load caught for admin editor:', err);
+        }
+      }
+
+      // PRIMARY: Google Maps API
+      if (gMaps?.maps) {
+        isGoogleMapsRef.current = true;
+        const map = new gMaps.maps.Map(mapContainerRef.current, {
+          center: { lat: 17.4475, lng: 78.6590 },
+          zoom: 12,
+          mapTypeControl: true,
+          mapTypeControlOptions: {
+            style: gMaps.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+            position: gMaps.maps.ControlPosition.TOP_LEFT,
+          },
+          fullscreenControl: true,
+          streetViewControl: false,
+          zoomControl: true,
+        });
+
+        mapInstanceRef.current = map;
+
+        map.addListener('click', (e: any) => {
+          if (!mapInstanceRef.current?._isDrawingModeRef || !e.latLng) return;
+          const newPt: [number, number] = [e.latLng.lat(), e.latLng.lng()];
+          mapInstanceRef.current._addPointCallback?.(newPt);
+        });
+
+        return;
+      }
+
+      // SECONDARY: Leaflet Fallback
+      isGoogleMapsRef.current = false;
+      const L = (await import('leaflet')).default;
       LRef.current = L;
 
       // Add Leaflet CSS if missing
@@ -75,7 +144,7 @@ export function ZoneMapEditor({
         attributionControl: false,
       });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
       }).addTo(map);
 
@@ -94,7 +163,9 @@ export function ZoneMapEditor({
     return () => {
       isMounted = false;
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
+        if (!isGoogleMapsRef.current && mapInstanceRef.current.remove) {
+          mapInstanceRef.current.remove();
+        }
         mapInstanceRef.current = null;
       }
     };
@@ -113,8 +184,50 @@ export function ZoneMapEditor({
   // Render existing zones on the map
   useEffect(() => {
     const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (isGoogleMapsRef.current) {
+      const g = (window as any).google;
+      if (!g?.maps) return;
+
+      // Clear old polygon layers
+      polygonLayersRef.current.forEach((layer) => {
+        try {
+          layer.setMap(null);
+        } catch {}
+      });
+      polygonLayersRef.current = [];
+
+      zones.forEach((zone) => {
+        const ring = zone.polygon?.coordinates?.[0];
+        if (!ring || ring.length < 3) return;
+
+        // GeoJSON has [lng, lat], Google Maps wants { lat, lng }
+        const path = ring.map((pt) => ({ lat: pt[1], lng: pt[0] }));
+        const isSelected = zone.id === selectedZoneId;
+
+        const poly = new g.maps.Polygon({
+          paths: path,
+          strokeColor: zone.active ? (isSelected ? '#047857' : '#059669') : '#64748b',
+          strokeOpacity: isSelected ? 1 : 0.8,
+          strokeWeight: isSelected ? 3 : 2,
+          fillColor: zone.active ? '#10b981' : '#94a3b8',
+          fillOpacity: isSelected ? 0.35 : 0.18,
+          map,
+        });
+
+        poly.addListener('click', () => {
+          onSelectZone?.(zone);
+        });
+
+        polygonLayersRef.current.push(poly);
+      });
+      return;
+    }
+
+    // Leaflet rendering
     const L = LRef.current;
-    if (!map || !L) return;
+    if (!L) return;
 
     // Clear old polygon layers
     polygonLayersRef.current.forEach((layer) => layer.remove());
@@ -152,8 +265,65 @@ export function ZoneMapEditor({
   // Render draft drawing polygon
   useEffect(() => {
     const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (isGoogleMapsRef.current) {
+      const g = (window as any).google;
+      if (!g?.maps) return;
+
+      // Clear old draft layers and markers
+      if (draftLayerRef.current) {
+        try {
+          draftLayerRef.current.setMap(null);
+        } catch {}
+        draftLayerRef.current = null;
+      }
+      markersRef.current.forEach((m) => {
+        try {
+          m.setMap(null);
+        } catch {}
+      });
+      markersRef.current = [];
+
+      if (drawnPoints.length === 0) return;
+
+      // Markers for each vertex on Google Maps
+      drawnPoints.forEach((pt, index) => {
+        const marker = new g.maps.Marker({
+          position: { lat: pt[0], lng: pt[1] },
+          map,
+          title: `Point #${index + 1}`,
+          icon: {
+            path: g.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: '#ef4444',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+          },
+        });
+        markersRef.current.push(marker);
+      });
+
+      if (drawnPoints.length >= 2) {
+        const path = drawnPoints.map((pt) => ({ lat: pt[0], lng: pt[1] }));
+        const draftPoly = new g.maps.Polygon({
+          paths: path,
+          strokeColor: '#dc2626',
+          strokeOpacity: 0.9,
+          strokeWeight: 2,
+          fillColor: '#f87171',
+          fillOpacity: 0.25,
+          map,
+        });
+        draftLayerRef.current = draftPoly;
+      }
+      return;
+    }
+
+    // Leaflet draft rendering
     const L = LRef.current;
-    if (!map || !L) return;
+    if (!L) return;
 
     // Clear old draft layers and markers
     if (draftLayerRef.current) {
