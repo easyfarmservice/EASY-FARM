@@ -143,14 +143,12 @@ export async function POST(req: NextRequest) {
     const otpExpiresAt = getDeliveryOtpExpiry();
     const adminName = auth.profile?.full_name || auth.user?.email || 'Founder / Admin';
 
-    // Store deliveryOtp and resolved customer credentials in notes so subsequent reads are immediate
-    meta = {
-      ...(meta || {}),
-      deliveryOtp: plainOtp,
-      customerEmail: customerEmail || meta?.customerEmail,
-      customerName: customerName || meta?.customerName,
-      customerPhone: customerPhone || meta?.customerPhone,
-    };
+    // Store resolved customer credentials in notes for fast subsequent reads, but do NOT store plain OTP
+    const cleanMeta = { ...(meta || {}) };
+    delete cleanMeta.deliveryOtp;
+    if (customerEmail) cleanMeta.customerEmail = customerEmail;
+    if (customerName) cleanMeta.customerName = customerName;
+    if (customerPhone) cleanMeta.customerPhone = customerPhone;
 
     // 8. Atomic database update
     const { error: updateErr } = await supabase
@@ -165,7 +163,7 @@ export async function POST(req: NextRequest) {
         delivery_person_type: 'FOUNDER',
         delivery_person_name: adminName,
         delivery_assigned_at: new Date().toISOString(),
-        notes: JSON.stringify(meta),
+        notes: JSON.stringify(cleanMeta),
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
@@ -284,7 +282,7 @@ export async function POST(req: NextRequest) {
       customer_phone: customerPhone,
       email_sent: Boolean(emailResult.success),
       email_error: emailResult.success ? null : (emailResult.error || 'Email dispatch failed'),
-      delivery_otp: plainOtp,
+      delivery_otp: null,
       sms_simulated: smsResult.simulated || false,
     });
   } catch (err: any) {

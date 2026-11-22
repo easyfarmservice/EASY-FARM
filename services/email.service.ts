@@ -301,7 +301,7 @@ export class EmailService {
             <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px dashed #059669; border-radius: 16px; padding: 24px; display: inline-block; min-width: 260px; margin-bottom: 20px;">
               <div style="color: #065f46; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px;">Delivery Handover OTP</div>
               <div style="font-family: 'Courier New', Courier, monospace; font-size: 42px; font-weight: 900; letter-spacing: 14px; color: #065f46; padding-left: 14px;">${params.otp}</div>
-              <div style="color: #047857; font-size: 11px; font-weight: 600; margin-top: 6px;">Valid for 1 Hour</div>
+              <div style="color: #047857; font-size: 11px; font-weight: 600; margin-top: 6px;">Valid until Doorstep Handover</div>
             </div>
 
             <!-- Destination Address (if available) -->
@@ -346,7 +346,14 @@ export class EmailService {
       return { success: false, reason: 'API key not configured' };
     }
 
+    const cleanEmail = (params.toEmail || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || cleanEmail.endsWith('@guest.easyfarm.in')) {
+      console.warn('[EmailService] Cannot send Order Delivered email: invalid email provided:', params.toEmail);
+      return { success: false, error: 'Invalid or missing customer email address' };
+    }
+
     try {
+      console.log(`[EmailService] Sending Order Delivered confirmation to ${cleanEmail} for Order #${params.orderId}`);
       const deliveredTime = params.deliveredAt || new Date().toLocaleString('en-IN', {
         dateStyle: 'medium',
         timeStyle: 'short',

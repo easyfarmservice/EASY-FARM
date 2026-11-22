@@ -97,11 +97,26 @@ export async function GET(req: NextRequest) {
       const addrObj = Array.isArray(o.customer_addresses) ? o.customer_addresses[0] : o.customer_addresses;
       const metaAddr = typeof meta?.address === 'object' && meta?.address !== null ? meta.address : null;
 
+      const rawMetaEmail =
+        meta?.customerEmail ||
+        meta?.email ||
+        meta?.userEmail ||
+        metaAddr?.customerEmail ||
+        metaAddr?.email ||
+        meta?.address?.customerEmail ||
+        meta?.address?.email ||
+        '';
+
       // Customer's registered profile email takes strict priority
+      const isValidEmail = (e?: string | null): boolean => {
+        if (!e || typeof e !== 'string') return false;
+        const clean = e.trim().toLowerCase();
+        return clean.includes('@') && clean.length > 5 && !clean.endsWith('@guest.easyfarm.in');
+      };
+
       const customerEmail =
-        (profile?.email && !profile.email.endsWith('@guest.easyfarm.in') ? profile.email.trim().toLowerCase() : '') ||
-        (meta?.customerEmail ? String(meta.customerEmail).trim().toLowerCase() : '') ||
-        (metaAddr?.customerEmail ? String(metaAddr.customerEmail).trim().toLowerCase() : '') ||
+        (isValidEmail(profile?.email) ? profile.email.trim().toLowerCase() : '') ||
+        (isValidEmail(rawMetaEmail) ? String(rawMetaEmail).trim().toLowerCase() : '') ||
         '';
 
       const customerName =
@@ -240,7 +255,9 @@ export async function GET(req: NextRequest) {
         otp_attempts: o.otp_attempts || 0,
         otp_created_at: o.otp_created_at,
         otp_expires_at: o.otp_expires_at,
-        delivery_otp: meta?.deliveryOtp || null,
+        delivery_otp: null, // Strictly hidden from admin panel — OTP is confidential and delivered only to customer email
+        has_otp: Boolean(o.delivery_otp_hash),
+        otp_sent_to: customerEmail || null,
         created_at: o.created_at,
         delivered_at: o.delivered_at,
         failure_reason: o.failure_reason,

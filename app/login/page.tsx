@@ -89,7 +89,7 @@ function LoginFormContent() {
       if (apiRes.ok && apiData.success) {
         return {
           ok: true,
-          notice: apiData.message || `6-digit verification code sent to ${cleanEmail}`,
+          notice: `6-digit verification code sent to ${cleanEmail}`,
         };
       }
       if (apiRes.status === 429) {
@@ -188,7 +188,7 @@ function LoginFormContent() {
             await supabase.auth.setSession({
               access_token: apiData.session.access_token,
               refresh_token: apiData.session.refresh_token,
-            }).catch(() => {});
+            }).catch(() => { });
           }
           verifyResult = { data: { user: apiData.user, session: apiData.session }, error: null };
         } else if (apiData.error) {
