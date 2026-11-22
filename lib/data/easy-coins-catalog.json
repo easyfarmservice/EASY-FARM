@@ -1127,6 +1127,36 @@
       "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
       "reference_id": "welcome_gift",
       "created_at": "2026-11-14T10:08:27.961Z"
+    },
+    {
+      "id": "led-welcome-bbcf6c29-6385-4846-8a8c-18b441dbe5af",
+      "customer_id": "bbcf6c29-6385-4846-8a8c-18b441dbe5af",
+      "amount": 150,
+      "balance_after": 150,
+      "transaction_type": "bonus_promo",
+      "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
+      "reference_id": "welcome_gift",
+      "created_at": "2026-11-22T18:50:55.416Z"
+    },
+    {
+      "id": "led-welcome-3386b99a-ccbe-4f98-a687-21aff7dfbad2",
+      "customer_id": "3386b99a-ccbe-4f98-a687-21aff7dfbad2",
+      "amount": 150,
+      "balance_after": 150,
+      "transaction_type": "bonus_promo",
+      "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
+      "reference_id": "welcome_gift",
+      "created_at": "2026-11-22T19:14:35.970Z"
+    },
+    {
+      "id": "led-welcome-4fc8239c-26a0-45af-a2b7-4b27a85eac01",
+      "customer_id": "4fc8239c-26a0-45af-a2b7-4b27a85eac01",
+      "amount": 150,
+      "balance_after": 150,
+      "transaction_type": "bonus_promo",
+      "description": "Welcome to Easy Farm Rewards — Initial Easy Coins Balance",
+      "reference_id": "welcome_gift",
+      "created_at": "2026-11-22T19:15:22.689Z"
     }
   ],
   "claims": [
@@ -1175,5 +1205,5 @@
       "image_url": "/images/rewards/dabur-red.jpg"
     }
   ],
-  "updated_at": "2026-11-14T10:08:27.965Z"
+  "updated_at": "2026-11-22T19:15:22.697Z"
 }
