@@ -211,7 +211,7 @@ export function ZeptoMapPicker({
     }
   };
 
-  // HTML with Google Maps Tiles + Radar GPS Beacon + Leaflet Engine
+  // HTML with Official Google Maps JavaScript API + Radar GPS Beacon + Leaflet Fallback
   const mapHtml = `
     <!DOCTYPE html>
     <html>
@@ -232,98 +232,140 @@ export function ZeptoMapPicker({
             pointer-events: none;
           }
         </style>
+        ${GOOGLE_MAPS_API_KEY ? `<script src="https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=geometry"></script>` : ''}
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       </head>
       <body>
         <div id="map"></div>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-          var map = L.map('map', {
-            center: [${initialLat}, ${initialLng}],
-            zoom: 15,
-            zoomControl: false
-          });
-          window.map = map;
+          var isGoogle = typeof google !== 'undefined' && google.maps;
+          var map;
 
-          // Google Maps High-Definition Street Tiles
-          var googleApiKey = "${GOOGLE_MAPS_API_KEY || ''}";
-          var baseLayer;
-
-          if (googleApiKey) {
-            baseLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=' + googleApiKey, {
-              maxZoom: 20,
-              subdomains: ['0', '1', '2', '3'],
-              attribution: 'Google'
-            }).addTo(map);
-
-            // Redundant Esri fallback if Google tile blocks
-            baseLayer.on('tileerror', function() {
-              L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 19
-              }).addTo(map);
+          if (isGoogle) {
+            // ── PRIMARY: OFFICIAL GOOGLE MAPS API ───────────────────────
+            map = new google.maps.Map(document.getElementById('map'), {
+              center: { lat: ${initialLat}, lng: ${initialLng} },
+              zoom: 16,
+              disableDefaultUI: true,
+              zoomControl: false,
+              mapTypeControl: false,
+              streetViewControl: false,
+              fullscreenControl: false,
+              gestureHandling: 'greedy'
             });
+            window.map = map;
+
+            // Delivery corridor boundary circle (Ghatkesar & Pocharam)
+            new google.maps.Circle({
+              center: { lat: 17.4475, lng: 78.6590 },
+              radius: 6500,
+              strokeColor: '#059669',
+              strokeOpacity: 0.85,
+              strokeWeight: 2,
+              fillColor: '#10b981',
+              fillOpacity: 0.12,
+              map: map
+            });
+
+            map.addListener('dragstart', function() {
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MOVE_START' }));
+              }
+            });
+
+            map.addListener('idle', function() {
+              var center = map.getCenter();
+              if (window.ReactNativeWebView && center) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'MOVE_END',
+                  lat: center.lat(),
+                  lng: center.lng()
+                }));
+              }
+            });
+
+            var userGpsMarker = null;
+            window.setUserLocation = function(lat, lng) {
+              if (userGpsMarker) {
+                userGpsMarker.setPosition({ lat: lat, lng: lng });
+              } else {
+                userGpsMarker = new google.maps.Marker({
+                  position: { lat: lat, lng: lng },
+                  map: map,
+                  title: '📍 You are here',
+                  icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: '#2563eb',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2.5
+                  },
+                  zIndex: 50
+                });
+              }
+            };
           } else {
-            // Ultra-smooth Esri World Street Map
-            baseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            // ── SECONDARY: LEAFLET FALLBACK ──────────────────────────────
+            map = L.map('map', {
+              center: [${initialLat}, ${initialLng}],
+              zoom: 15,
+              zoomControl: false
+            });
+            window.map = map;
+
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
               maxZoom: 19
             }).addTo(map);
-          }
 
-          // Service area corridor boundary highlight (Pocharam & Ghatkesar)
-          L.circle([17.4475, 78.6590], {
-            color: '#059669',
-            fillColor: '#10b981',
-            fillOpacity: 0.12,
-            radius: 6500,
-            weight: 2,
-            dashArray: '6, 6'
-          }).addTo(map);
+            L.circle([17.4475, 78.6590], {
+              color: '#059669',
+              fillColor: '#10b981',
+              fillOpacity: 0.12,
+              radius: 6500,
+              weight: 2,
+              dashArray: '6, 6'
+            }).addTo(map);
 
-          // Pulsating Blue GPS Beacon for User's Current Location
-          var userGpsMarker = null;
+            var leafletUserMarker = null;
+            window.setUserLocation = function(lat, lng) {
+              var beaconHtml = [
+                '<div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%);">',
+                '  <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: rgba(37, 99, 235, 0.35); animation: user-gps-radar 2s infinite ease-out;"></div>',
+                '  <div style="position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>',
+                '  <div style="position: absolute; width: 10px; height: 10px; border-radius: 50%; background-color: #2563eb;"></div>',
+                '</div>'
+              ].join('');
 
-          window.setUserLocation = function(lat, lng) {
-            var beaconHtml = [
-              '<div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%);">',
-              '  <div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: rgba(37, 99, 235, 0.35); animation: user-gps-radar 2s infinite ease-out;"></div>',
-              '  <div style="position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>',
-              '  <div style="position: absolute; width: 10px; height: 10px; border-radius: 50%; background-color: #2563eb;"></div>',
-              '</div>'
-            ].join('');
+              var beaconIcon = L.divIcon({
+                className: 'user-current-gps-marker',
+                html: beaconHtml,
+                iconSize: [0, 0]
+              });
 
-            var beaconIcon = L.divIcon({
-              className: 'user-current-gps-marker',
-              html: beaconHtml,
-              iconSize: [0, 0]
+              if (leafletUserMarker) {
+                leafletUserMarker.setLatLng([lat, lng]);
+              } else {
+                leafletUserMarker = L.marker([lat, lng], {
+                  icon: beaconIcon,
+                  zIndexOffset: 50
+                }).addTo(map);
+              }
+            };
+
+            map.on('movestart', function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MOVE_START' }));
             });
 
-            if (userGpsMarker) {
-              userGpsMarker.setLatLng([lat, lng]);
-            } else {
-              userGpsMarker = L.marker([lat, lng], {
-                icon: beaconIcon,
-                zIndexOffset: 50
-              }).addTo(map);
+            map.on('moveend', function() {
+              var c = map.getCenter();
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MOVE_END', lat: c.lat, lng: c.lng }));
+            });
 
-              userGpsMarker.bindTooltip(
-                '<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 700; color: #1e3a8a; padding: 2px 6px;">📍 You are here</div>',
-                { direction: 'top', offset: [0, -14] }
-              );
-            }
-          };
-
-          map.on('movestart', function() {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MOVE_START' }));
-          });
-
-          map.on('moveend', function() {
-            var c = map.getCenter();
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MOVE_END', lat: c.lat, lng: c.lng }));
-          });
-
-          // Invalidate size immediately after DOM mount
-          setTimeout(function() {
-            map.invalidateSize();
-          }, 200);
+            setTimeout(function() {
+              map.invalidateSize();
+            }, 200);
+          }
         </script>
       </body>
     </html>
