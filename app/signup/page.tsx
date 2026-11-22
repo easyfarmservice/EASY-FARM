@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, User, Phone, ArrowLeft, AlertCircle, CheckCircle, RefreshCw, ShoppingBag, ShieldCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -91,7 +92,10 @@ function SignupFormContent() {
     if (otpError) {
       const msg = otpError.message.toLowerCase();
       if (msg.includes('rate limit') || msg.includes('too many') || msg.includes('security purposes')) {
-        return { ok: false, error: 'Too many requests. Please wait a few moments before trying again.' };
+        return {
+          ok: true,
+          notice: `A 6-digit verification code was recently sent to ${cleanEmail}. Please enter that code below.`,
+        };
       }
       return { ok: false, error: otpError.message || 'Could not send verification code. Please try again.' };
     }
@@ -331,26 +335,35 @@ function SignupFormContent() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#F7F8F2]">
+    <div className="min-h-screen w-full flex flex-col md:flex-row bg-[#F7F8F2]">
       {/* ─────────────────────────────────────────────────────────────
-          LEFT PANEL: EDITORIAL BRAND STORYTELLING (55% on Desktop)
+          LEFT PANEL: EDITORIAL BRAND STORYTELLING (Fixed on Tablets & Laptops)
       ───────────────────────────────────────────────────────────── */}
       <div 
-        className="w-full lg:w-[54%] relative flex flex-col justify-between p-6 sm:p-10 lg:p-14 text-white overflow-hidden bg-cover bg-center min-h-[260px] sm:min-h-[320px] lg:min-h-screen"
-        style={{
-          backgroundImage: `linear-gradient(180deg, rgba(14, 38, 27, 0.42) 0%, rgba(14, 38, 27, 0.76) 48%, rgba(10, 29, 21, 0.94) 100%), url('/images/telangana-farm-hero.jpg'), url('https://images.unsplash.com/photo-1500937386664-56d1dfef3854?q=80&w=1600&auto=format&fit=crop')`,
-        }}
+        className="w-full md:w-[48%] lg:w-[52%] relative flex flex-col justify-between p-6 sm:p-10 lg:p-14 text-white overflow-hidden min-h-[300px] md:min-h-screen md:h-screen md:sticky md:top-0 shadow-lg"
       >
-        {/* Ambient Glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(168,204,98,0.18)_0%,transparent_60%)] pointer-events-none" />
+        {/* Real Farm Hero Image */}
+        <Image
+          src="/images/telangana-farm-hero.jpg"
+          alt="Telangana Farm Fresh"
+          fill
+          priority
+          sizes="(max-width: 768px) 100vw, 52vw"
+          className="object-cover object-center pointer-events-none z-0"
+        />
+
+        {/* Ambient Gradient Overlays for Readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0E261B]/60 via-[#0E261B]/70 to-[#0A1D15]/95 pointer-events-none z-1" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(168,204,98,0.22)_0%,transparent_60%)] pointer-events-none z-1" />
 
         {/* Top: Brand Logo Lockup */}
         <div className="relative z-10">
           <Link href="/" className="inline-flex items-center gap-3 group">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src="/images/easyfarm-logo.png"
               alt="Easy Farm"
+              width={44}
+              height={44}
               className="w-10 h-10 sm:w-11 sm:h-11 object-contain drop-shadow-md transition-transform duration-200 group-hover:scale-105"
             />
             <div className="flex flex-col">
@@ -381,7 +394,7 @@ function SignupFormContent() {
         </div>
 
         {/* Bottom: Signature & Trust Attributes */}
-        <div className="relative z-10 hidden lg:flex items-center justify-between pt-6 border-t border-white/20">
+        <div className="relative z-10 hidden sm:flex items-center justify-between pt-6 border-t border-white/20">
           <span className="text-[11px] font-bold tracking-[0.22em] uppercase text-[#A8CC62]">
             FRESHNESS, DELIVERED DIFFERENTLY.
           </span>
@@ -397,10 +410,10 @@ function SignupFormContent() {
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          RIGHT PANEL: AUTHENTICATION (46% on Desktop, Warm Ivory)
+          RIGHT PANEL: AUTHENTICATION (Scrollable on Desktop/Tablet)
       ───────────────────────────────────────────────────────────── */}
-      <div className="w-full lg:w-[46%] bg-[#F7F8F2] flex items-center justify-center p-6 sm:p-10 lg:p-14 relative rounded-t-[28px] -mt-6 lg:mt-0 lg:rounded-none z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.06)] lg:shadow-none">
-        <div className="w-full max-w-[410px] mx-auto">
+      <div className="w-full md:w-[52%] lg:w-[48%] min-h-screen bg-[#F7F8F2] flex items-center justify-center p-6 sm:p-10 lg:p-14 relative z-10">
+        <div className="w-full max-w-[420px] mx-auto py-4">
           {/* Mobile Sheet Handle Indicator */}
           <div className="w-10 h-1 bg-[#D4DBCF] rounded-full mx-auto mb-6 lg:hidden" />
 
