@@ -72,6 +72,8 @@ export class EmailService {
     to: string[];
     subject: string;
     html: string;
+    text?: string;
+    reply_to?: string;
   }) {
     const resend = getResendClient();
     let primaryFrom = emailPayload.from || getResendFromEmail();
@@ -93,6 +95,7 @@ export class EmailService {
         ...emailPayload,
         to: cleanTo,
         from: primaryFrom,
+        reply_to: emailPayload.reply_to || 'easyfarmsupport@gmail.com',
       });
 
       if (response.error) {
@@ -235,7 +238,7 @@ export class EmailService {
           <div style="padding: 20px 0; text-align: center;">
             <h2 style="color: #0f172a; font-size: 18px; margin-bottom: 8px;">Hi ${params.name || 'Valued Customer'}, verify your email</h2>
             <p style="color: #475569; font-size: 13px; line-height: 1.5; max-width: 400px; margin: 0 auto 20px auto;">
-              Use the verification code below to complete your Easy Farm sign-in. This code expires in <strong>5 minutes</strong>.
+              Use the verification code below to complete your Easy Farm sign-in. This code expires in <strong>10 minutes</strong>.
             </p>
 
             <div style="background-color: #f0fdf4; border: 2px dashed #065f46; border-radius: 14px; padding: 20px; display: inline-block; margin-bottom: 20px;">
@@ -243,21 +246,35 @@ export class EmailService {
             </div>
 
             <p style="color: #64748b; font-size: 11px; margin-top: 8px;">
-              Enter this code on the Easy Farm signup page to activate your account.<br>
+              Enter this 6-digit code on the Easy Farm verification screen.<br>
               Do not share this code with anyone.
             </p>
           </div>
 
           <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; text-align: center;">
-            <p style="color: #94a3b8; font-size: 11px; margin: 0;">If you did not sign up for Easy Farm, please ignore this email.</p>
+            <p style="color: #94a3b8; font-size: 11px; margin: 0;">If you did not sign up or log in to Easy Farm, please ignore this email.</p>
           </div>
         </div>
       `;
 
+      const textContent = `Hello ${params.name || 'Valued Customer'},
+
+Your Easy Farm 6-digit verification code is: ${params.otp}
+
+Use this code to complete your Easy Farm sign-in. This code expires in 10 minutes.
+
+If you did not request this verification code, please ignore this email.
+
+Warm regards,
+Easy Farm Support
+business@easyfarm.co.in`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
-        subject: `${params.otp} — Your Easy Farm Verification Code`,
+        subject: `Easy Farm Verification Code: ${params.otp}`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -328,10 +345,24 @@ export class EmailService {
         </div>
       `;
 
+      const textContent = `Hello ${params.recipientName},
+
+Your Easy Farm order #${params.orderId} is OUT FOR DELIVERY!
+
+Your 4-digit Delivery Handover OTP is: ${params.otp}
+
+Please share this OTP with the delivery executive only when you have received your package at your doorstep.
+${params.deliveryAddress ? `\nDelivery Address: ${params.deliveryAddress}` : ''}
+
+Easy Farm — Farm-Fresh Vegetables Delivered Direct from Telangana Farms
+Support: easyfarmsupport@gmail.com`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Your Delivery OTP is ${params.otp} — Easy Farm Order #${params.orderId}`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -417,10 +448,25 @@ export class EmailService {
         </div>
       `;
 
+      const textContent = `Hello ${params.recipientName},
+
+Your Easy Farm order #${params.orderId} HAS BEEN DELIVERED SUCCESSFULLY!
+
+Delivered At: ${deliveredTime}
+${params.deliveryAddress ? `Delivery Address: ${params.deliveryAddress}` : ''}
+
+Thank you for choosing Easy Farm! We hope you enjoy today's fresh Telangana harvest.
+
+Warm regards,
+Easy Farm Operations
+Support: easyfarmsupport@gmail.com`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Delivered! Easy Farm Order #${params.orderId}`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };

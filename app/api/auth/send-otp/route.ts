@@ -67,9 +67,11 @@ export async function POST(request: Request) {
         .ilike('email', cleanEmail)
         .maybeSingle();
 
-      if (profile?.full_name && profile.full_name.trim() !== '' && profile.full_name !== 'Easy Farm Member') {
-        displayName = profile.full_name;
+      if (profile) {
         userExists = true;
+        if (profile.full_name && profile.full_name.trim() !== '' && profile.full_name !== 'Easy Farm Member') {
+          displayName = profile.full_name;
+        }
       } else {
         const { data: usersData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({
           page: 1,
@@ -89,22 +91,9 @@ export async function POST(request: Request) {
       console.warn('[send-otp] Profile/user lookup fallback note:', lookupErr);
     }
 
-    // Enforce that new users must create an account; direct login for unregistered emails is blocked
-    if (type === 'login' && !userExists) {
-      return NextResponse.json(
-        {
-          error: 'No registered account found with this email. Please sign up to create your account with your name and phone number.',
-          notRegistered: true,
-        },
-        { status: 404 }
-      );
-    }
-
-    if (type === 'signup' && !name?.trim()) {
-      return NextResponse.json(
-        { error: 'Full name is required to create a new customer account.' },
-        { status: 400 }
-      );
+    // For new registrations, ensure a display name is set
+    if (type === 'signup' && !displayName) {
+      displayName = name?.trim() || cleanEmail.split('@')[0];
     }
 
     // 2. Generate authentic Supabase Auth 6-digit OTP token via Admin API (with local fallback)
