@@ -343,14 +343,16 @@ function SignupFormContent() {
         className="w-full md:w-[48%] lg:w-[52%] relative flex flex-col justify-between p-6 sm:p-10 lg:p-14 text-white overflow-hidden min-h-[300px] md:min-h-screen md:h-screen md:sticky md:top-0 shadow-lg"
       >
         {/* Real Farm Hero Image */}
-        <Image
-          src="/images/telangana-farm-hero.jpg"
-          alt="Telangana Farm Fresh"
-          fill
-          priority
-          sizes="(max-width: 768px) 100vw, 52vw"
-          className="object-cover object-center pointer-events-none z-0"
-        />
+        <div className="absolute inset-0 z-0 pointer-events-none">
+          <Image
+            src="/images/telangana-farm-hero.jpg"
+            alt="Telangana Farm Fresh"
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 52vw"
+            className="object-cover object-center pointer-events-none"
+          />
+        </div>
 
         {/* Ambient Gradient Overlays for Readability */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#0E261B]/60 via-[#0E261B]/70 to-[#0A1D15]/95 pointer-events-none z-1" />
