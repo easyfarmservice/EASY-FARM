@@ -165,10 +165,28 @@ export class EmailService {
         </div>
       `;
 
+      const textContent = `Hello ${params.recipientName},
+
+Thank you for ordering with Easy Farm! Your order #${params.orderId} has been confirmed.
+
+Delivery Destination:
+${params.deliveryAddress}
+
+Order Total: ₹${params.total.toFixed(2)}
+Scheduled for Sunday delivery by 6:00 PM in Ghatkesar.
+
+Your produce is harvested directly from verified partner farms in Chevella & Shankarpally.
+
+Warm regards,
+Easy Farm Support
+Support: easyfarmsupport@gmail.com`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Order Confirmed #${params.orderId} — Easy Farm Ghatkesar`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -209,10 +227,22 @@ export class EmailService {
         </div>
       `;
 
+      const textContent = `Hello ${params.name || 'Valued Customer'},
+
+Welcome to Easy Farm! Please click or copy the link below to confirm your email address and activate your account:
+
+${params.confirmLink}
+
+Warm regards,
+Easy Farm Support
+business@easyfarm.co.in`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Confirm your Easy Farm account`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -272,6 +302,7 @@ business@easyfarm.co.in`;
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Easy Farm Verification Code: ${params.otp}`,
+
         html: htmlContent,
         text: textContent,
         reply_to: 'easyfarmsupport@gmail.com',
@@ -512,10 +543,25 @@ Support: easyfarmsupport@gmail.com`;
         </div>
       `;
 
+      const textContent = `Hello,
+
+We received a request to reset your Easy Farm account password.
+
+Your 6-digit verification code is: ${params.otpCode}
+
+This code will expire in 10 minutes. If you did not request this password reset, please ignore this email.
+${params.resetLink ? `\nDirect password reset link: ${params.resetLink}` : ''}
+
+Warm regards,
+Easy Farm Support
+business@easyfarm.co.in`;
+
       return await this.sendWithFallback({
         to: [params.toEmail],
         subject: `Your Easy Farm Password Reset Code: ${params.otpCode}`,
         html: htmlContent,
+        text: textContent,
+        reply_to: 'easyfarmsupport@gmail.com',
       });
     } catch (err: any) {
       return { success: false, error: err.message };
