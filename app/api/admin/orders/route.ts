@@ -368,8 +368,9 @@ export async function PATCH(req: NextRequest) {
       } else if (status === 'packed' && !meta.timeline.packed_at) {
         meta.timeline.packed_at = nowIso;
       } else if (status === 'out_for_delivery') {
+        const currentOrdAny = currentOrd as any;
         const isTransitionToOut = currentOrd?.status !== 'out_for_delivery';
-        const hasActiveOtp = currentOrd?.delivery_otp_hash && currentOrd?.otp_expires_at && new Date(currentOrd.otp_expires_at).getTime() > Date.now();
+        const hasActiveOtp = currentOrdAny?.delivery_otp_hash && currentOrdAny?.otp_expires_at && new Date(currentOrdAny.otp_expires_at).getTime() > Date.now();
 
         if (isTransitionToOut || !hasActiveOtp) {
           if (!meta.timeline.out_for_delivery_at) {

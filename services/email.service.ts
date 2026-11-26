@@ -73,6 +73,7 @@ export class EmailService {
     subject: string;
     html: string;
     text?: string;
+    replyTo?: string;
     reply_to?: string;
   }) {
     const resend = getResendClient();
@@ -91,11 +92,12 @@ export class EmailService {
     }
 
     try {
+      const { reply_to, replyTo, ...restPayload } = emailPayload;
       const response = await resend.emails.send({
-        ...emailPayload,
+        ...restPayload,
         to: cleanTo,
         from: primaryFrom,
-        reply_to: emailPayload.reply_to || 'easyfarmsupport@gmail.com',
+        replyTo: replyTo || reply_to || 'easyfarmsupport@gmail.com',
       });
 
       if (response.error) {
