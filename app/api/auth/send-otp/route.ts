@@ -137,6 +137,29 @@ export async function POST(request: Request) {
       otp: otpCode,
     });
 
+    // 4. Also trigger Supabase native Auth email dispatch as redundant delivery guarantee
+    // This ensures customer receives their OTP even if GoDaddy SPF/DMARC filters Resend in Gmail
+    try {
+      const { error: sbDispatchError } = await supabaseAdmin.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: type === 'signup',
+          data: {
+            full_name: displayName,
+            phone: phone?.trim() || '',
+            role: 'customer',
+          },
+        },
+      });
+      if (sbDispatchError) {
+        console.warn('[send-otp] Supabase native email dispatch notice:', sbDispatchError.message);
+      } else {
+        console.log(`[send-otp] Supabase native email dispatched successfully to ${cleanEmail}`);
+      }
+    } catch (sbMailErr: any) {
+      console.warn('[send-otp] Supabase native email dispatch exception:', sbMailErr?.message);
+    }
+
     if (!emailResult.success) {
       const errorMsg: string = (emailResult as any).error || (emailResult as any).reason || 'Email dispatch failed';
       console.warn('[send-otp] Resend dispatch warning, attempting Supabase Auth email fallback:', errorMsg);
