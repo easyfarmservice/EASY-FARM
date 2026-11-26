@@ -49,7 +49,11 @@ export async function POST(request: Request) {
 
     if (isRateLimited(cleanEmail)) {
       return NextResponse.json(
-        { error: 'Too many OTP requests. Please wait 60 seconds before trying again.' },
+        {
+          success: false,
+          rateLimited: true,
+          error: 'A verification code was recently dispatched to this email. Please check your inbox or wait 60 seconds.',
+        },
         { status: 429 }
       );
     }

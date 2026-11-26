@@ -93,8 +93,11 @@ function LoginFormContent() {
           notice: `6-digit verification code sent to ${cleanEmail}`,
         };
       }
-      if (apiRes.status === 429) {
-        return { ok: false, error: apiData.error || 'Too many OTP requests. Please wait a moment.' };
+      if (apiRes.status === 429 || apiData.rateLimited) {
+        return {
+          ok: true,
+          notice: `A 6-digit verification code was recently sent to ${cleanEmail}. Please enter that code below.`,
+        };
       }
       if (apiRes.status >= 400 && apiRes.status < 500 && apiData.error) {
         return { ok: false, error: apiData.error };
@@ -419,7 +422,10 @@ function LoginFormContent() {
           LEFT PANEL: EDITORIAL BRAND STORYTELLING (Fixed on Tablets & Laptops)
       ───────────────────────────────────────────────────────────── */}
       <div
-        className="w-full md:w-[48%] lg:w-[52%] relative flex flex-col justify-between p-6 sm:p-10 lg:p-14 text-white overflow-hidden min-h-[300px] md:min-h-screen md:h-screen md:sticky md:top-0 shadow-lg"
+        className="w-full md:w-[48%] lg:w-[52%] relative flex flex-col justify-between p-6 sm:p-10 lg:p-14 text-white overflow-hidden min-h-[300px] md:min-h-screen md:h-screen md:sticky md:top-0 shadow-lg bg-cover bg-center"
+        style={{
+          backgroundImage: `linear-gradient(180deg, rgba(14, 38, 27, 0.42) 0%, rgba(14, 38, 27, 0.76) 48%, rgba(10, 29, 21, 0.94) 100%), url('/images/custom-box-veggies.jpg'), url('https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1600&auto=format&fit=crop')`,
+        }}
       >
         {/* Real Farm Fresh Vegetables Hero Image */}
         <div className="absolute inset-0 z-0 pointer-events-none">
