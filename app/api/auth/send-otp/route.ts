@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     }
 
     const otpCode = supabaseOtp || generateOtp();
-    console.log(`[AUTH 6-DIGIT OTP (${type})] >>> ${cleanEmail}: ${otpCode} <<<`);
+    console.log(`[AUTH OTP (${type})] >>> Request processed for ${cleanEmail}`);
 
     // Store in global memory store for instant server-side verification fallback
     setOtp(cleanEmail, otpCode, supabaseOtp);

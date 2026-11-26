@@ -368,24 +368,29 @@ export async function PATCH(req: NextRequest) {
       } else if (status === 'packed' && !meta.timeline.packed_at) {
         meta.timeline.packed_at = nowIso;
       } else if (status === 'out_for_delivery') {
-        if (!meta.timeline.out_for_delivery_at) {
-          meta.timeline.out_for_delivery_at = nowIso;
+        const isTransitionToOut = currentOrd?.status !== 'out_for_delivery';
+        const hasActiveOtp = currentOrd?.delivery_otp_hash && currentOrd?.otp_expires_at && new Date(currentOrd.otp_expires_at).getTime() > Date.now();
+
+        if (isTransitionToOut || !hasActiveOtp) {
+          if (!meta.timeline.out_for_delivery_at) {
+            meta.timeline.out_for_delivery_at = nowIso;
+          }
+          const plainOtp = generateDeliveryOtp();
+          const otpHash = hashDeliveryOtp(plainOtp);
+          const otpExpiresAt = getDeliveryOtpExpiry();
+
+          updateData.delivery_otp_hash = otpHash;
+          updateData.otp_created_at = nowIso;
+          updateData.otp_expires_at = otpExpiresAt;
+          updateData.otp_verified = false;
+          updateData.otp_attempts = 0;
+          updateData.delivery_assigned_at = nowIso;
+          updateData.delivery_person_type = 'FOUNDER';
+          updateData.delivery_person_name = auth.profile?.full_name || 'Founder / Admin';
+
+          dispatchedPlainOtp = plainOtp;
+          delete meta.deliveryOtp;
         }
-        const plainOtp = generateDeliveryOtp();
-        const otpHash = hashDeliveryOtp(plainOtp);
-        const otpExpiresAt = getDeliveryOtpExpiry();
-
-        updateData.delivery_otp_hash = otpHash;
-        updateData.otp_created_at = nowIso;
-        updateData.otp_expires_at = otpExpiresAt;
-        updateData.otp_verified = false;
-        updateData.otp_attempts = 0;
-        updateData.delivery_assigned_at = nowIso;
-        updateData.delivery_person_type = 'FOUNDER';
-        updateData.delivery_person_name = auth.profile?.full_name || 'Founder / Admin';
-
-        dispatchedPlainOtp = plainOtp;
-        delete meta.deliveryOtp;
       } else if (status === 'delivered') {
         meta.timeline.delivered_at = nowIso;
         updateData.delivered_at = nowIso;
@@ -517,8 +522,8 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    // 2. If order was marked as delivered:
-    if (status === 'delivered') {
+    // 2. If order was marked as delivered (transitioning from non-delivered state):
+    if (status === 'delivered' && currentOrd?.status !== 'delivered') {
       // Award Weekly Streak stamp & evaluate milestone rewards
       try {
         await WeeklyStreakService.processDeliveredOrder(currentOrd?.id || orderId);
