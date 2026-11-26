@@ -541,7 +541,7 @@ function MainAppFlow() {
 
     if (apiResult.reachable) {
       if (apiResult.ok && apiResult.data?.success) {
-        return { ok: true, notice: apiResult.data.message };
+        return { ok: true, notice: `6-digit verification code sent to ${trimmedEmail}` };
       }
       if (apiResult.status === 429) {
         return {
@@ -1820,14 +1820,13 @@ function MainAppFlow() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.cleanOtpCalloutTitle}>🚚 DELIVERY IN PROGRESS</Text>
                         <Text style={styles.cleanOtpCalloutSub}>
-                          {ord.deliveryOtp ? 'Handover OTP ready for driver' : 'OTP dispatched to registered email'}
+                          4-digit handover OTP sent directly to your registered email
                         </Text>
                       </View>
-                      {ord.deliveryOtp ? (
-                        <View style={styles.cleanOtpCalloutBadge}>
-                          <Text style={styles.cleanOtpCalloutBadgeText}>{ord.deliveryOtp}</Text>
-                        </View>
-                      ) : null}
+                      <View style={styles.cleanOtpCalloutBadge}>
+                        <Mail size={12} color="#065f46" style={{ marginRight: 4 }} />
+                        <Text style={styles.cleanOtpCalloutBadgeText}>Email Sent</Text>
+                      </View>
                     </View>
                   )}
 

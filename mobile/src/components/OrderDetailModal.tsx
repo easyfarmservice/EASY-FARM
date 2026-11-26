@@ -28,6 +28,7 @@ import {
   Tag,
   AlertCircle,
   HelpCircle,
+  Mail,
 } from 'lucide-react-native';
 import { CustomerOrder } from '../services/orderService';
 
@@ -44,8 +45,6 @@ export function OrderDetailModal({
   onClose,
   onReorder,
 }: OrderDetailModalProps) {
-  const [copiedOtp, setCopiedOtp] = useState(false);
-
   if (!order) return null;
 
   const isDelivered = order.status === 'delivered';
@@ -65,12 +64,6 @@ export function OrderDetailModal({
   if (isPacked) activeStep = 2;
   if (isOut) activeStep = 3;
   if (isDelivered) activeStep = 4;
-
-  const handleCopyOtp = () => {
-    if (!order.deliveryOtp) return;
-    setCopiedOtp(true);
-    setTimeout(() => setCopiedOtp(false), 2500);
-  };
 
   const handleWhatsAppHelp = () => {
     const text = encodeURIComponent(
@@ -192,35 +185,19 @@ export function OrderDetailModal({
                   <ShieldCheck size={14} color="#065f46" />
                   <Text style={styles.otpBadgeText}>DELIVERY HANDOVER OTP</Text>
                 </View>
-                <Text style={styles.otpTimeNotice}>Valid 1 Hour</Text>
+                <Text style={styles.otpTimeNotice}>Active until handover</Text>
               </View>
 
               <Text style={styles.otpCardPrompt}>
-                Please share this 4-digit code with the delivery partner upon arrival at your door:
+                Your 4-digit delivery handover OTP has been sent directly to your registered email address. Please check your email inbox and share the 4 digits with the delivery partner at your doorstep to confirm handover.
               </Text>
 
               <View style={styles.otpDigitsContainer}>
-                {order.deliveryOtp ? (
-                  order.deliveryOtp.split('').map((digit, idx) => (
-                    <View key={idx} style={styles.otpDigitBox}>
-                      <Text style={styles.otpDigitText}>{digit}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <View style={styles.otpPendingBox}>
-                    <Text style={styles.otpPendingText}>Check your registered email for OTP</Text>
-                  </View>
-                )}
+                <View style={styles.otpPendingBox}>
+                  <Mail size={16} color="#065f46" style={{ marginRight: 6 }} />
+                  <Text style={styles.otpPendingText}>Check your registered email inbox for 4-digit OTP</Text>
+                </View>
               </View>
-
-              {order.deliveryOtp && (
-                <TouchableOpacity onPress={handleCopyOtp} style={styles.otpCopyBtn} activeOpacity={0.7}>
-                  <Copy size={14} color="#065f46" />
-                  <Text style={styles.otpCopyText}>
-                    {copiedOtp ? '✓ OTP Copied to Clipboard!' : 'Tap to Copy OTP'}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           )}
 

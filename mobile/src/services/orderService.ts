@@ -33,7 +33,6 @@ export interface CustomerOrder {
   address: SavedAddressItem;
   customerName: string;
   customerPhone: string;
-  deliveryOtp?: string;
 }
 
 const ORDERS_STORAGE_KEY = '@easyfarm_customer_orders_v1';
@@ -344,7 +343,6 @@ export async function getCustomerOrders(email?: string): Promise<CustomerOrder[]
           },
           customerName: parsedNotes.customerName || 'Valued Customer',
           customerPhone: parsedNotes.customerPhone || '',
-          deliveryOtp: parsedNotes.deliveryOtp || o.delivery_otp || undefined,
         };
       });
 
